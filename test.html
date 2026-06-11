@@ -1,0 +1,17 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="background:#000;display:flex;align-items:center;justify-content:center;height:100vh;">
+<button 
+  id="btn"
+  style="padding:30px 60px;font-size:24px;background:#4488ff;color:#fff;border:none;border-radius:12px;"
+  ontouchstart="document.getElementById('msg').textContent='TOUCHED'"
+  onclick="document.getElementById('msg').textContent='CLICKED'">
+  TAP ME
+</button>
+<p id="msg" style="position:fixed;bottom:40px;left:0;right:0;text-align:center;color:#fff;font-size:24px;">waiting...</p>
+</body>
+</html>
