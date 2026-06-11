@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>AR護衛シューティング</title>
+  <title>AR護衛シューチE��ング</title>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body { overflow: hidden; background: #000; }
 
-    /* ---- UI オーバーレイ ---- */
+    /* ---- UI オーバ�Eレイ ---- */
     #ui {
       position: fixed;
       inset: 0;
@@ -19,7 +19,7 @@
       font-family: 'Helvetica Neue', sans-serif;
     }
 
-    /* HP バー */
+    /* HP バ�E */
     #hp-wrap {
       position: absolute;
       top: 14px;
@@ -75,7 +75,7 @@
       text-shadow: 0 0 6px #000;
     }
 
-    /* スキャン案内 */
+    /* スキャン案�E */
     #scan-prompt {
       position: absolute;
       bottom: 80px;
@@ -89,7 +89,7 @@
       transition: opacity 0.4s;
     }
 
-    /* タップヒント */
+    /* タチE�EヒンチE*/
     #tap-hint {
       position: absolute;
       bottom: 44px;
@@ -108,7 +108,7 @@
       50%       { opacity: 0.35; }
     }
 
-    /* ゲームメッセージ */
+    /* ゲームメチE��ージ */
     #msg-wrap {
       position: absolute;
       top: 50%;
@@ -133,7 +133,7 @@
       text-shadow: 0 0 4px #000;
     }
 
-    /* ダメージフラッシュ */
+    /* ダメージフラチE��ュ */
     #damage-flash {
       position: fixed;
       inset: 0;
@@ -146,10 +146,10 @@
 </head>
 <body>
 
-<!-- ダメージフラッシュ -->
+<!-- ダメージフラチE��ュ -->
 <div id="damage-flash"></div>
 
-<!-- UI オーバーレイ -->
+<!-- UI オーバ�Eレイ -->
 <div id="ui">
   <div id="hp-wrap">
     <div id="hp-label">HP</div>
@@ -159,8 +159,8 @@
 
   <div id="wave-wrap">Wave <span id="wave-cur">0</span> / <span id="wave-tot">5</span></div>
 
-  <div id="scan-prompt">カメラをマーカーに向けてください</div>
-  <div id="tap-hint">タップで撃退！</div>
+  <div id="scan-prompt">カメラを�Eーカーに向けてください</div>
+  <div id="tap-hint">タチE�Eで撁E���E�E/div>
 
   <div id="msg-wrap">
     <div id="msg-title"></div>
@@ -178,22 +178,32 @@
 
   <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-  <!-- AR ターゲット (targetIndex: 0) -->
+  <!-- AR ターゲチE�� (targetIndex: 0) -->
   <a-entity mindar-image-target="targetIndex: 0">
-    <!-- ゲームルート: 全 AR コンテンツをここに置く -->
+    <!-- ゲームルーチE 全 AR コンチE��チE��ここに置ぁE-->
     <a-entity game-manager></a-entity>
   </a-entity>
 
 </a-scene>
 
 <script>
+// �J�������𖾎��I�Ƀ��N�G�X�g
+(async function() {
+  try {
+    await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+  } catch(e) {
+    alert('�J�����̋����K�v�ł��B�ݒ肩��J�����������Ă��������B');
+  }
+})();
+</script>
+<script>
 // ================================================================
-// ゲームマネージャー A-Frame コンポーネント
+// ゲームマネージャー A-Frame コンポ�EネンチE
 // ================================================================
 AFRAME.registerComponent('game-manager', {
 
   init: function () {
-    // ---- 状態 ----
+    // ---- 状慁E----
     this.particles   = [];
     this.hp          = 100;
     this.gameActive  = false;
@@ -201,11 +211,11 @@ AFRAME.registerComponent('game-manager', {
     this.gameWon     = false;
     this.currentWave = 0;
     this.totalWaves  = 5;
-    this.waveInterval = 4200;   // ms: ウェーブ間隔
-    this.nextWaveAt   = null;   // performance.now() ベース
-    this.particleSpeed = 0.24;  // units/sec (マーカー幅 ≒ 1 unit)
+    this.waveInterval = 4200;   // ms: ウェーブ間隁E
+    this.nextWaveAt   = null;   // performance.now() ベ�Eス
+    this.particleSpeed = 0.24;  // units/sec (マ�Eカー幁E≁E1 unit)
 
-    // UI 要素キャッシュ
+    // UI 要素キャチE��ュ
     this.uiHpBar     = document.getElementById('hp-bar');
     this.uiHpVal     = document.getElementById('hp-val');
     this.uiWaveCur   = document.getElementById('wave-cur');
@@ -219,20 +229,20 @@ AFRAME.registerComponent('game-manager', {
 
     this.uiWaveTot.textContent = this.totalWaves;
 
-    // キャラクター生成
+    // キャラクター生�E
     this.createCharacter();
 
-    // マーカーイベント
+    // マ�EカーイベンチE
     const target = this.el.closest('[mindar-image-target]');
     target.addEventListener('targetFound', () => this.onTargetFound());
     target.addEventListener('targetLost',  () => this.onTargetLost());
 
-    // タップ / クリックで撃退
+    // タチE�E / クリチE��で撁E��
     document.addEventListener('click',      (e) => this.onTap(e));
     document.addEventListener('touchend',   (e) => { e.preventDefault(); this.onTap(e); }, { passive: false });
   },
 
-  // ---- キャラクター (ワイヤーフレーム人型) ----
+  // ---- キャラクター (ワイヤーフレーム人垁E ----
   createCharacter: function () {
     const root = this.el;
     const mat  = 'shader: flat; color: #aaddff; wireframe: true; opacity: 0.9';
@@ -265,20 +275,20 @@ AFRAME.registerComponent('game-manager', {
 
     // 頭
     root.appendChild(mkSphere('0 0.23 0', 0.065));
-    // 首
+    // 馁E
     root.appendChild(mkCyl('0 0.155 0', 0.018, 0.04));
     // 胴
     root.appendChild(mkCyl('0 0.07 0', 0.055, 0.19));
-    // 左腕
+    // 左腁E
     root.appendChild(mkBox('-0.115 0.10 0', 0.022, 0.15, 0.022,  28));
-    // 右腕
+    // 右腁E
     root.appendChild(mkBox(' 0.115 0.10 0', 0.022, 0.15, 0.022, -28));
-    // 左脚
+    // 左脁E
     root.appendChild(mkBox('-0.038 -0.09 0', 0.022, 0.19, 0.022,  9));
-    // 右脚
+    // 右脁E
     root.appendChild(mkBox(' 0.038 -0.09 0', 0.022, 0.19, 0.022, -9));
 
-    // 保護オーラ (薄い球)
+    // 保護オーラ (薁E��琁E
     const aura = document.createElement('a-sphere');
     aura.setAttribute('radius', '0.22');
     aura.setAttribute('material', 'shader: flat; color: #4488ff; transparent: true; opacity: 0.08; side: double');
@@ -286,7 +296,7 @@ AFRAME.registerComponent('game-manager', {
     root.appendChild(aura);
   },
 
-  // ---- ターゲット検出 / 消失 ----
+  // ---- ターゲチE��検�E / 消失 ----
   onTargetFound: function () {
     if (this.gameOver || this.gameWon) return;
     this.gameActive = true;
@@ -294,7 +304,7 @@ AFRAME.registerComponent('game-manager', {
     this.uiTapHint.style.display = 'block';
 
     if (this.currentWave === 0 && this.nextWaveAt === null) {
-      // 初ウェーブは 1.5 秒後
+      // 初ウェーブ�E 1.5 秒征E
       this.nextWaveAt = performance.now() + 1500;
     }
   },
@@ -306,7 +316,7 @@ AFRAME.registerComponent('game-manager', {
     }
   },
 
-  // ---- ウェーブ生成 ----
+  // ---- ウェーブ生戁E----
   spawnWave: function () {
     if (this.currentWave >= this.totalWaves) return;
     this.currentWave++;
@@ -314,8 +324,8 @@ AFRAME.registerComponent('game-manager', {
 
     const DIST = 0.72;
     [
-      [  0,    DIST, 0 ],   // 上
-      [  0,   -DIST, 0 ],   // 下
+      [  0,    DIST, 0 ],   // 丁E
+      [  0,   -DIST, 0 ],   // 丁E
       [ -DIST,  0,   0 ],   // 左
       [  DIST,  0,   0 ],   // 右
     ].forEach(([x, y, z]) => this.spawnParticle(x, y, z));
@@ -332,7 +342,7 @@ AFRAME.registerComponent('game-manager', {
     core.setAttribute('animation', 'property: scale; from: 1 1 1; to: 1.35 1.35 1.35; dur: 600; dir: alternate; loop: true; easing: easeInOutSine');
     wrap.appendChild(core);
 
-    // グロウ外縁
+    // グロウ外縁E
     const glow = document.createElement('a-sphere');
     glow.setAttribute('radius', '0.062');
     glow.setAttribute('material', 'shader: flat; color: #aaeeff; transparent: true; opacity: 0.28; side: double');
@@ -351,20 +361,20 @@ AFRAME.registerComponent('game-manager', {
     this.particles.push({ el: wrap, x: sx, y: sy, active: true });
   },
 
-  // ---- メインループ ----
+  // ---- メインルーチE----
   tick: function (time, timeDelta) {
     if (!this.gameActive || this.gameOver || this.gameWon) return;
 
     const now = performance.now();
-    const dt  = Math.min(timeDelta, 100) / 1000; // 秒 (上限 100ms)
+    const dt  = Math.min(timeDelta, 100) / 1000; // 私E(上限 100ms)
 
-    // ウェーブタイマー
+    // ウェーブタイマ�E
     if (this.currentWave < this.totalWaves && this.nextWaveAt && now >= this.nextWaveAt) {
       this.spawnWave();
       this.nextWaveAt = now + this.waveInterval;
     }
 
-    // パーティクル移動 & 到達判定
+    // パ�EチE��クル移勁E& 到達判宁E
     const dead = [];
     for (let i = 0; i < this.particles.length; i++) {
       const p = this.particles[i];
@@ -373,7 +383,7 @@ AFRAME.registerComponent('game-manager', {
       const dist = Math.sqrt(p.x * p.x + p.y * p.y);
 
       if (dist < 0.055) {
-        // 中央到達 → ダメージ
+        // 中央到遁EↁEダメージ
         p.active = false;
         p.el.parentNode && p.el.parentNode.removeChild(p.el);
         dead.push(i);
@@ -391,18 +401,18 @@ AFRAME.registerComponent('game-manager', {
       this.particles.splice(dead[i], 1);
     }
 
-    // 全撃退チェック
+    // 全撁E��チェチE��
     if (this.currentWave >= this.totalWaves && this.particles.length === 0 && !this.gameWon) {
       this.triggerWin();
     }
   },
 
-  // ---- タップ処理 ----
+  // ---- タチE�E処琁E----
   onTap: function (e) {
     if (!this.gameActive || this.gameOver || this.gameWon) return;
     if (this.particles.length === 0) return;
 
-    // 中央に最も近いパーティクルを撃退
+    // 中央に最も近いパ�EチE��クルを撃退
     let nearest = null;
     let minDist  = Infinity;
     for (const p of this.particles) {
@@ -419,13 +429,13 @@ AFRAME.registerComponent('game-manager', {
     const idx = this.particles.indexOf(nearest);
     if (idx > -1) this.particles.splice(idx, 1);
 
-    // 撃退後に全クリアチェック
+    // 撁E��後に全クリアチェチE��
     if (this.currentWave >= this.totalWaves && this.particles.length === 0 && !this.gameWon) {
       setTimeout(() => this.triggerWin(), 300);
     }
   },
 
-  // ---- 撃退エフェクト ----
+  // ---- 撁E��エフェクチE----
   showHitEffect: function (x, y) {
     const burst = document.createElement('a-entity');
     burst.setAttribute('position', `${x} ${y} 0.02`);
@@ -443,7 +453,7 @@ AFRAME.registerComponent('game-manager', {
 
     this.el.appendChild(burst);
 
-    // フェードアウト
+    // フェードアウチE
     let t = 0;
     const animate = () => {
       t += 0.12;
@@ -460,7 +470,7 @@ AFRAME.registerComponent('game-manager', {
     requestAnimationFrame(animate);
   },
 
-  // ---- ダメージ処理 ----
+  // ---- ダメージ処琁E----
   takeDamage: function (amount) {
     if (this.gameOver || this.gameWon) return;
     this.hp = Math.max(0, this.hp - amount);
@@ -489,7 +499,7 @@ AFRAME.registerComponent('game-manager', {
     }
   },
 
-  // ---- ゲームオーバー ----
+  // ---- ゲームオーバ�E ----
   triggerGameOver: function () {
     if (this.gameOver) return;
     this.gameOver  = true;
@@ -504,7 +514,7 @@ AFRAME.registerComponent('game-manager', {
     this.uiMsgTitle.textContent   = 'GAME OVER';
     this.uiMsgTitle.style.color   = '#ff5555';
     this.uiMsgTitle.style.textShadow = '0 0 20px #ff3333, 0 0 40px #ff0000';
-    this.uiMsgSub.textContent     = 'タップで再挑戦';
+    this.uiMsgSub.textContent     = 'タチE�Eで再挑戦';
     this.uiMsgWrap.style.display  = 'flex';
 
     // 再挑戦
@@ -513,7 +523,7 @@ AFRAME.registerComponent('game-manager', {
     }, 800);
   },
 
-  // ---- 全撃退クリア ----
+  // ---- 全撁E��クリア ----
   triggerWin: function () {
     if (this.gameWon) return;
     this.gameWon   = true;
@@ -522,10 +532,10 @@ AFRAME.registerComponent('game-manager', {
     this.uiTapHint.style.display = 'none';
     this.uiScan.style.opacity    = '0';
 
-    this.uiMsgTitle.textContent   = 'ありがとう！';
+    this.uiMsgTitle.textContent   = 'ありがとぁE��E;
     this.uiMsgTitle.style.color   = '#aaddff';
     this.uiMsgTitle.style.textShadow = '0 0 24px #88ccff, 0 0 48px #4488ff';
-    this.uiMsgSub.textContent     = '護衛成功！全ての侵食を撃退した！';
+    this.uiMsgSub.textContent     = '護衛�E功！�Eての侵食を撁E��した�E�E;
     this.uiMsgWrap.style.display  = 'flex';
   },
 
@@ -533,3 +543,4 @@ AFRAME.registerComponent('game-manager', {
 </script>
 </body>
 </html>
+
