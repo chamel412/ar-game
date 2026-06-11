@@ -3,23 +3,64 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>AR護衛シューチE��ング</title>
+  <title>AR護衛シューティング</title>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
     body { overflow: hidden; background: #000; }
 
-    /* ---- UI オーバ�Eレイ ---- */
+    #camera-prompt {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      z-index: 9999;
+      color: #fff;
+      font-family: sans-serif;
+      text-align: center;
+      padding: 32px;
+    }
+
+    #camera-prompt h1 {
+      font-size: 22px;
+      color: #aaddff;
+      text-shadow: 0 0 12px #4488ff;
+    }
+
+    #camera-prompt p {
+      font-size: 15px;
+      color: rgba(255,255,255,0.8);
+      line-height: 1.6;
+    }
+
+    #start-btn {
+      padding: 16px 40px;
+      font-size: 18px;
+      background: #4488ff;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 0 20px #4488ff;
+    }
+
+    #start-btn:active { opacity: 0.7; }
+
+    #ar-container { display: none; }
+
     #ui {
       position: fixed;
       inset: 0;
       z-index: 1000;
       pointer-events: none;
       font-family: 'Helvetica Neue', sans-serif;
+      display: none;
     }
 
-    /* HP バ�E */
     #hp-wrap {
       position: absolute;
       top: 14px;
@@ -31,264 +72,154 @@
       gap: 8px;
     }
 
-    #hp-label {
-      color: #aaddff;
-      font-size: 13px;
-      font-weight: bold;
-      letter-spacing: 1px;
-      text-shadow: 0 0 6px #4488ff;
-      white-space: nowrap;
-    }
+    #hp-label { color: #aaddff; font-size: 13px; font-weight: bold; letter-spacing: 1px; text-shadow: 0 0 6px #4488ff; white-space: nowrap; }
+    #hp-bg { flex: 1; height: 18px; background: rgba(0,0,0,0.55); border: 1.5px solid rgba(170,221,255,0.6); border-radius: 9px; overflow: hidden; }
+    #hp-bar { height: 100%; width: 100%; border-radius: 9px; background: linear-gradient(90deg, #00ff99, #00cc66); transition: width 0.35s ease, background 0.35s ease; }
+    #hp-val { color: #fff; font-size: 13px; min-width: 30px; text-align: right; text-shadow: 0 0 4px #000; }
 
-    #hp-bg {
-      flex: 1;
-      height: 18px;
-      background: rgba(0, 0, 0, 0.55);
-      border: 1.5px solid rgba(170, 221, 255, 0.6);
-      border-radius: 9px;
-      overflow: hidden;
-    }
+    #wave-wrap { position: absolute; top: 44px; right: 16px; color: rgba(170,221,255,0.85); font-size: 13px; text-shadow: 0 0 6px #000; }
 
-    #hp-bar {
-      height: 100%;
-      width: 100%;
-      border-radius: 9px;
-      background: linear-gradient(90deg, #00ff99, #00cc66);
-      transition: width 0.35s ease, background 0.35s ease;
-    }
+    #scan-prompt { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.8); font-size: 15px; text-align: center; text-shadow: 0 0 6px #000; white-space: nowrap; transition: opacity 0.4s; }
 
-    #hp-val {
-      color: #fff;
-      font-size: 13px;
-      min-width: 30px;
-      text-align: right;
-      text-shadow: 0 0 4px #000;
-    }
+    #tap-hint { position: absolute; bottom: 44px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.75); font-size: 15px; text-shadow: 0 0 6px #000; white-space: nowrap; display: none; animation: pulse-hint 2s ease-in-out infinite; }
 
-    /* ウェーブ表示 */
-    #wave-wrap {
-      position: absolute;
-      top: 44px;
-      right: 16px;
-      color: rgba(170, 221, 255, 0.85);
-      font-size: 13px;
-      text-shadow: 0 0 6px #000;
-    }
+    @keyframes pulse-hint { 0%, 100% { opacity: 0.75; } 50% { opacity: 0.35; } }
 
-    /* スキャン案�E */
-    #scan-prompt {
-      position: absolute;
-      bottom: 80px;
-      left: 50%;
-      transform: translateX(-50%);
-      color: rgba(255, 255, 255, 0.8);
-      font-size: 15px;
-      text-align: center;
-      text-shadow: 0 0 6px #000;
-      white-space: nowrap;
-      transition: opacity 0.4s;
-    }
+    #msg-wrap { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; display: none; flex-direction: column; align-items: center; gap: 14px; }
+    #msg-title { font-size: clamp(40px, 12vw, 64px); font-weight: bold; letter-spacing: 2px; }
+    #msg-sub { font-size: clamp(14px, 4vw, 18px); color: rgba(255,255,255,0.8); text-shadow: 0 0 4px #000; }
 
-    /* タチE�EヒンチE*/
-    #tap-hint {
-      position: absolute;
-      bottom: 44px;
-      left: 50%;
-      transform: translateX(-50%);
-      color: rgba(255, 255, 255, 0.75);
-      font-size: 15px;
-      text-shadow: 0 0 6px #000;
-      white-space: nowrap;
-      display: none;
-      animation: pulse-hint 2s ease-in-out infinite;
-    }
-
-    @keyframes pulse-hint {
-      0%, 100% { opacity: 0.75; }
-      50%       { opacity: 0.35; }
-    }
-
-    /* ゲームメチE��ージ */
-    #msg-wrap {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      text-align: center;
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      gap: 14px;
-    }
-
-    #msg-title {
-      font-size: clamp(40px, 12vw, 64px);
-      font-weight: bold;
-      letter-spacing: 2px;
-    }
-
-    #msg-sub {
-      font-size: clamp(14px, 4vw, 18px);
-      color: rgba(255, 255, 255, 0.8);
-      text-shadow: 0 0 4px #000;
-    }
-
-    /* ダメージフラチE��ュ */
-    #damage-flash {
-      position: fixed;
-      inset: 0;
-      background: rgba(255, 60, 60, 0.35);
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.1s;
-    }
+    #damage-flash { position: fixed; inset: 0; background: rgba(255,60,60,0.35); pointer-events: none; opacity: 0; transition: opacity 0.1s; }
   </style>
 </head>
 <body>
 
-<!-- ダメージフラチE��ュ -->
-<div id="damage-flash"></div>
-
-<!-- UI オーバ�Eレイ -->
-<div id="ui">
-  <div id="hp-wrap">
-    <div id="hp-label">HP</div>
-    <div id="hp-bg"><div id="hp-bar"></div></div>
-    <div id="hp-val">100</div>
-  </div>
-
-  <div id="wave-wrap">Wave <span id="wave-cur">0</span> / <span id="wave-tot">5</span></div>
-
-  <div id="scan-prompt">カメラを�Eーカーに向けてください</div>
-  <div id="tap-hint">タチE�Eで撁E���E�E/div>
-
-  <div id="msg-wrap">
-    <div id="msg-title"></div>
-    <div id="msg-sub"></div>
-  </div>
+<!-- カメラ許可画面 -->
+<div id="camera-prompt">
+  <h1>AR護衛シューティング</h1>
+  <p>このゲームはカメラを使用します。<br>下のボタンを押してカメラを許可してください。</p>
+  <button id="start-btn" onclick="startAR()">カメラを起動してゲーム開始</button>
+  <p style="font-size:12px; color:rgba(255,255,255,0.5);">許可ダイアログが出たら「許可」を選んでください</p>
 </div>
 
-<!-- A-Frame AR シーン -->
-<a-scene
-  mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiLoading: yes; uiScanning: yes; uiError: yes"
-  color-space="sRGB"
-  renderer="colorManagement: true"
-  vr-mode-ui="enabled: false"
-  device-orientation-permission-ui="enabled: false">
+<!-- ARコンテナ（カメラ許可後に表示） -->
+<div id="ar-container">
+  <div id="damage-flash"></div>
 
-  <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+  <div id="ui">
+    <div id="hp-wrap">
+      <div id="hp-label">HP</div>
+      <div id="hp-bg"><div id="hp-bar"></div></div>
+      <div id="hp-val">100</div>
+    </div>
+    <div id="wave-wrap">Wave <span id="wave-cur">0</span> / <span id="wave-tot">5</span></div>
+    <div id="scan-prompt">カメラをマーカーに向けてください</div>
+    <div id="tap-hint">タップで撃退</div>
+    <div id="msg-wrap">
+      <div id="msg-title"></div>
+      <div id="msg-sub"></div>
+    </div>
+  </div>
 
-  <!-- AR ターゲチE�� (targetIndex: 0) -->
-  <a-entity mindar-image-target="targetIndex: 0">
-    <!-- ゲームルーチE 全 AR コンチE��チE��ここに置ぁE-->
-    <a-entity game-manager></a-entity>
-  </a-entity>
+  <a-scene
+    mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiLoading: yes; uiScanning: yes; uiError: yes"
+    color-space="sRGB"
+    renderer="colorManagement: true"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false">
 
-</a-scene>
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+    <a-entity mindar-image-target="targetIndex: 0">
+      <a-entity game-manager></a-entity>
+    </a-entity>
+
+  </a-scene>
+</div>
 
 <script>
-// �J�������𖾎��I�Ƀ��N�G�X�g
-(async function() {
+async function startAR() {
   try {
-    await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    // カメラ許可を明示的にリクエスト
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: 'environment' } 
+    });
+    // 許可取得後にストリームを停止（MindARが改めて起動する）
+    stream.getTracks().forEach(t => t.stop());
+
+    // カメラ許可画面を非表示にしてARを表示
+    document.getElementById('camera-prompt').style.display = 'none';
+    document.getElementById('ar-container').style.display = 'block';
+    document.getElementById('ui').style.display = 'block';
+
   } catch(e) {
-    alert('�J�����̋����K�v�ł��B�ݒ肩��J�����������Ă��������B');
+    alert('カメラの許可が必要です。\nブラウザの設定からカメラを許可してください。\n\nエラー: ' + e.message);
   }
-})();
+}
 </script>
+
 <script>
-// ================================================================
-// ゲームマネージャー A-Frame コンポ�EネンチE
-// ================================================================
 AFRAME.registerComponent('game-manager', {
-
   init: function () {
-    // ---- 状慁E----
-    this.particles   = [];
-    this.hp          = 100;
-    this.gameActive  = false;
-    this.gameOver    = false;
-    this.gameWon     = false;
-    this.currentWave = 0;
-    this.totalWaves  = 5;
-    this.waveInterval = 4200;   // ms: ウェーブ間隁E
-    this.nextWaveAt   = null;   // performance.now() ベ�Eス
-    this.particleSpeed = 0.24;  // units/sec (マ�Eカー幁E≁E1 unit)
+    this.particles    = [];
+    this.hp           = 100;
+    this.gameActive   = false;
+    this.gameOver     = false;
+    this.gameWon      = false;
+    this.currentWave  = 0;
+    this.totalWaves   = 5;
+    this.waveInterval = 4200;
+    this.nextWaveAt   = null;
+    this.particleSpeed = 0.24;
 
-    // UI 要素キャチE��ュ
-    this.uiHpBar     = document.getElementById('hp-bar');
-    this.uiHpVal     = document.getElementById('hp-val');
-    this.uiWaveCur   = document.getElementById('wave-cur');
-    this.uiWaveTot   = document.getElementById('wave-tot');
-    this.uiScan      = document.getElementById('scan-prompt');
-    this.uiTapHint   = document.getElementById('tap-hint');
-    this.uiMsgWrap   = document.getElementById('msg-wrap');
-    this.uiMsgTitle  = document.getElementById('msg-title');
-    this.uiMsgSub    = document.getElementById('msg-sub');
-    this.uiFlash     = document.getElementById('damage-flash');
+    this.uiHpBar    = document.getElementById('hp-bar');
+    this.uiHpVal    = document.getElementById('hp-val');
+    this.uiWaveCur  = document.getElementById('wave-cur');
+    this.uiWaveTot  = document.getElementById('wave-tot');
+    this.uiScan     = document.getElementById('scan-prompt');
+    this.uiTapHint  = document.getElementById('tap-hint');
+    this.uiMsgWrap  = document.getElementById('msg-wrap');
+    this.uiMsgTitle = document.getElementById('msg-title');
+    this.uiMsgSub   = document.getElementById('msg-sub');
+    this.uiFlash    = document.getElementById('damage-flash');
 
     this.uiWaveTot.textContent = this.totalWaves;
-
-    // キャラクター生�E
     this.createCharacter();
 
-    // マ�EカーイベンチE
     const target = this.el.closest('[mindar-image-target]');
     target.addEventListener('targetFound', () => this.onTargetFound());
     target.addEventListener('targetLost',  () => this.onTargetLost());
 
-    // タチE�E / クリチE��で撁E��
-    document.addEventListener('click',      (e) => this.onTap(e));
-    document.addEventListener('touchend',   (e) => { e.preventDefault(); this.onTap(e); }, { passive: false });
+    document.addEventListener('click',    (e) => this.onTap(e));
+    document.addEventListener('touchend', (e) => { e.preventDefault(); this.onTap(e); }, { passive: false });
   },
 
-  // ---- キャラクター (ワイヤーフレーム人垁E ----
   createCharacter: function () {
     const root = this.el;
     const mat  = 'shader: flat; color: #aaddff; wireframe: true; opacity: 0.9';
 
     const mkSphere = (pos, r) => {
       const el = document.createElement('a-sphere');
-      el.setAttribute('position', pos);
-      el.setAttribute('radius', r);
-      el.setAttribute('material', mat);
-      return el;
+      el.setAttribute('position', pos); el.setAttribute('radius', r); el.setAttribute('material', mat); return el;
     };
     const mkCyl = (pos, r, h) => {
       const el = document.createElement('a-cylinder');
-      el.setAttribute('position', pos);
-      el.setAttribute('radius', r);
-      el.setAttribute('height', h);
-      el.setAttribute('material', mat);
-      return el;
+      el.setAttribute('position', pos); el.setAttribute('radius', r); el.setAttribute('height', h); el.setAttribute('material', mat); return el;
     };
     const mkBox = (pos, w, h, d, rz) => {
       const el = document.createElement('a-box');
-      el.setAttribute('position', pos);
-      el.setAttribute('width',  w);
-      el.setAttribute('height', h);
-      el.setAttribute('depth',  d);
-      el.setAttribute('rotation', `0 0 ${rz}`);
-      el.setAttribute('material', mat);
-      return el;
+      el.setAttribute('position', pos); el.setAttribute('width', w); el.setAttribute('height', h); el.setAttribute('depth', d);
+      el.setAttribute('rotation', `0 0 ${rz}`); el.setAttribute('material', mat); return el;
     };
 
-    // 頭
     root.appendChild(mkSphere('0 0.23 0', 0.065));
-    // 馁E
     root.appendChild(mkCyl('0 0.155 0', 0.018, 0.04));
-    // 胴
     root.appendChild(mkCyl('0 0.07 0', 0.055, 0.19));
-    // 左腁E
     root.appendChild(mkBox('-0.115 0.10 0', 0.022, 0.15, 0.022,  28));
-    // 右腁E
     root.appendChild(mkBox(' 0.115 0.10 0', 0.022, 0.15, 0.022, -28));
-    // 左脁E
     root.appendChild(mkBox('-0.038 -0.09 0', 0.022, 0.19, 0.022,  9));
-    // 右脁E
     root.appendChild(mkBox(' 0.038 -0.09 0', 0.022, 0.19, 0.022, -9));
 
-    // 保護オーラ (薁E��琁E
     const aura = document.createElement('a-sphere');
     aura.setAttribute('radius', '0.22');
     aura.setAttribute('material', 'shader: flat; color: #4488ff; transparent: true; opacity: 0.08; side: double');
@@ -296,172 +227,125 @@ AFRAME.registerComponent('game-manager', {
     root.appendChild(aura);
   },
 
-  // ---- ターゲチE��検�E / 消失 ----
   onTargetFound: function () {
     if (this.gameOver || this.gameWon) return;
     this.gameActive = true;
     this.uiScan.style.opacity    = '0';
     this.uiTapHint.style.display = 'block';
-
     if (this.currentWave === 0 && this.nextWaveAt === null) {
-      // 初ウェーブ�E 1.5 秒征E
       this.nextWaveAt = performance.now() + 1500;
     }
   },
 
   onTargetLost: function () {
     this.gameActive = false;
-    if (!this.gameOver && !this.gameWon) {
-      this.uiScan.style.opacity = '1';
-    }
+    if (!this.gameOver && !this.gameWon) this.uiScan.style.opacity = '1';
   },
 
-  // ---- ウェーブ生戁E----
   spawnWave: function () {
     if (this.currentWave >= this.totalWaves) return;
     this.currentWave++;
     this.uiWaveCur.textContent = this.currentWave;
-
     const DIST = 0.72;
-    [
-      [  0,    DIST, 0 ],   // 丁E
-      [  0,   -DIST, 0 ],   // 丁E
-      [ -DIST,  0,   0 ],   // 左
-      [  DIST,  0,   0 ],   // 右
-    ].forEach(([x, y, z]) => this.spawnParticle(x, y, z));
+    [[0, DIST, 0], [0, -DIST, 0], [-DIST, 0, 0], [DIST, 0, 0]].forEach(([x, y, z]) => this.spawnParticle(x, y, z));
   },
 
   spawnParticle: function (sx, sy, sz) {
     const wrap = document.createElement('a-entity');
     wrap.setAttribute('position', `${sx} ${sy} 0.02`);
 
-    // コア
     const core = document.createElement('a-sphere');
     core.setAttribute('radius', '0.032');
     core.setAttribute('material', 'shader: flat; color: #88ddff; opacity: 0.95');
     core.setAttribute('animation', 'property: scale; from: 1 1 1; to: 1.35 1.35 1.35; dur: 600; dir: alternate; loop: true; easing: easeInOutSine');
     wrap.appendChild(core);
 
-    // グロウ外縁E
     const glow = document.createElement('a-sphere');
     glow.setAttribute('radius', '0.062');
     glow.setAttribute('material', 'shader: flat; color: #aaeeff; transparent: true; opacity: 0.28; side: double');
     wrap.appendChild(glow);
 
-    // 軌跡リング
     const ring = document.createElement('a-ring');
-    ring.setAttribute('radius-inner', '0.04');
-    ring.setAttribute('radius-outer', '0.07');
+    ring.setAttribute('radius-inner', '0.04'); ring.setAttribute('radius-outer', '0.07');
     ring.setAttribute('material', 'shader: flat; color: #66bbff; transparent: true; opacity: 0.35; side: double');
     ring.setAttribute('animation', 'property: rotation; from: 0 0 0; to: 0 0 360; dur: 1200; loop: true; easing: linear');
     wrap.appendChild(ring);
 
     this.el.appendChild(wrap);
-
     this.particles.push({ el: wrap, x: sx, y: sy, active: true });
   },
 
-  // ---- メインルーチE----
   tick: function (time, timeDelta) {
     if (!this.gameActive || this.gameOver || this.gameWon) return;
-
     const now = performance.now();
-    const dt  = Math.min(timeDelta, 100) / 1000; // 私E(上限 100ms)
+    const dt  = Math.min(timeDelta, 100) / 1000;
 
-    // ウェーブタイマ�E
     if (this.currentWave < this.totalWaves && this.nextWaveAt && now >= this.nextWaveAt) {
       this.spawnWave();
       this.nextWaveAt = now + this.waveInterval;
     }
 
-    // パ�EチE��クル移勁E& 到達判宁E
     const dead = [];
     for (let i = 0; i < this.particles.length; i++) {
       const p = this.particles[i];
       if (!p.active) continue;
-
       const dist = Math.sqrt(p.x * p.x + p.y * p.y);
-
       if (dist < 0.055) {
-        // 中央到遁EↁEダメージ
         p.active = false;
         p.el.parentNode && p.el.parentNode.removeChild(p.el);
         dead.push(i);
         this.takeDamage(20);
       } else {
-        const move  = this.particleSpeed * dt;
+        const move = this.particleSpeed * dt;
         const ratio = move / dist;
-        p.x -= p.x * ratio;
-        p.y -= p.y * ratio;
+        p.x -= p.x * ratio; p.y -= p.y * ratio;
         p.el.setAttribute('position', `${p.x} ${p.y} 0.02`);
       }
     }
+    for (let i = dead.length - 1; i >= 0; i--) this.particles.splice(dead[i], 1);
 
-    for (let i = dead.length - 1; i >= 0; i--) {
-      this.particles.splice(dead[i], 1);
-    }
-
-    // 全撁E��チェチE��
     if (this.currentWave >= this.totalWaves && this.particles.length === 0 && !this.gameWon) {
       this.triggerWin();
     }
   },
 
-  // ---- タチE�E処琁E----
   onTap: function (e) {
     if (!this.gameActive || this.gameOver || this.gameWon) return;
     if (this.particles.length === 0) return;
-
-    // 中央に最も近いパ�EチE��クルを撃退
-    let nearest = null;
-    let minDist  = Infinity;
+    let nearest = null, minDist = Infinity;
     for (const p of this.particles) {
       if (!p.active) continue;
       const d = Math.sqrt(p.x * p.x + p.y * p.y);
       if (d < minDist) { minDist = d; nearest = p; }
     }
-
     if (!nearest) return;
-
     nearest.active = false;
     this.showHitEffect(nearest.x, nearest.y);
     nearest.el.parentNode && nearest.el.parentNode.removeChild(nearest.el);
     const idx = this.particles.indexOf(nearest);
     if (idx > -1) this.particles.splice(idx, 1);
-
-    // 撁E��後に全クリアチェチE��
     if (this.currentWave >= this.totalWaves && this.particles.length === 0 && !this.gameWon) {
       setTimeout(() => this.triggerWin(), 300);
     }
   },
 
-  // ---- 撁E��エフェクチE----
   showHitEffect: function (x, y) {
     const burst = document.createElement('a-entity');
     burst.setAttribute('position', `${x} ${y} 0.02`);
-
     const flash = document.createElement('a-sphere');
     flash.setAttribute('radius', '0.11');
     flash.setAttribute('material', 'shader: flat; color: #ffffff; transparent: true; opacity: 0.85');
     burst.appendChild(flash);
-
     const ring = document.createElement('a-ring');
-    ring.setAttribute('radius-inner', '0.06');
-    ring.setAttribute('radius-outer', '0.14');
+    ring.setAttribute('radius-inner', '0.06'); ring.setAttribute('radius-outer', '0.14');
     ring.setAttribute('material', 'shader: flat; color: #88ddff; transparent: true; opacity: 0.7; side: double');
     burst.appendChild(ring);
-
     this.el.appendChild(burst);
-
-    // フェードアウチE
     let t = 0;
     const animate = () => {
       t += 0.12;
       const op = Math.max(0, 1 - t);
-      if (op <= 0) {
-        burst.parentNode && burst.parentNode.removeChild(burst);
-        return;
-      }
+      if (op <= 0) { burst.parentNode && burst.parentNode.removeChild(burst); return; }
       flash.setAttribute('material', `shader: flat; color: #ffffff; transparent: true; opacity: ${op * 0.85}`);
       ring.setAttribute('material',  `shader: flat; color: #88ddff; transparent: true; opacity: ${op * 0.7}; side: double`);
       burst.setAttribute('scale', `${1 + t * 2.5} ${1 + t * 2.5} 1`);
@@ -470,7 +354,6 @@ AFRAME.registerComponent('game-manager', {
     requestAnimationFrame(animate);
   },
 
-  // ---- ダメージ処琁E----
   takeDamage: function (amount) {
     if (this.gameOver || this.gameWon) return;
     this.hp = Math.max(0, this.hp - amount);
@@ -486,7 +369,6 @@ AFRAME.registerComponent('game-manager', {
     this._flashTimer = setTimeout(() => { el.style.opacity = '0'; }, 120);
   },
 
-  // ---- HP UI 更新 ----
   updateHPUI: function () {
     this.uiHpBar.style.width = this.hp + '%';
     this.uiHpVal.textContent = this.hp;
@@ -499,48 +381,33 @@ AFRAME.registerComponent('game-manager', {
     }
   },
 
-  // ---- ゲームオーバ�E ----
   triggerGameOver: function () {
     if (this.gameOver) return;
-    this.gameOver  = true;
-    this.gameActive = false;
-
+    this.gameOver = true; this.gameActive = false;
     this.particles.forEach(p => p.el.parentNode && p.el.parentNode.removeChild(p.el));
     this.particles = [];
-
     this.uiTapHint.style.display = 'none';
-    this.uiScan.style.opacity    = '0';
-
-    this.uiMsgTitle.textContent   = 'GAME OVER';
-    this.uiMsgTitle.style.color   = '#ff5555';
+    this.uiScan.style.opacity = '0';
+    this.uiMsgTitle.textContent = 'GAME OVER';
+    this.uiMsgTitle.style.color = '#ff5555';
     this.uiMsgTitle.style.textShadow = '0 0 20px #ff3333, 0 0 40px #ff0000';
-    this.uiMsgSub.textContent     = 'タチE�Eで再挑戦';
-    this.uiMsgWrap.style.display  = 'flex';
-
-    // 再挑戦
-    setTimeout(() => {
-      document.addEventListener('click', () => location.reload(), { once: true });
-    }, 800);
+    this.uiMsgSub.textContent = 'タップで再挑戦';
+    this.uiMsgWrap.style.display = 'flex';
+    setTimeout(() => { document.addEventListener('click', () => location.reload(), { once: true }); }, 800);
   },
 
-  // ---- 全撁E��クリア ----
   triggerWin: function () {
     if (this.gameWon) return;
-    this.gameWon   = true;
-    this.gameActive = false;
-
+    this.gameWon = true; this.gameActive = false;
     this.uiTapHint.style.display = 'none';
-    this.uiScan.style.opacity    = '0';
-
-    this.uiMsgTitle.textContent   = 'ありがとぁE��E;
-    this.uiMsgTitle.style.color   = '#aaddff';
+    this.uiScan.style.opacity = '0';
+    this.uiMsgTitle.textContent = 'ありがとう';
+    this.uiMsgTitle.style.color = '#aaddff';
     this.uiMsgTitle.style.textShadow = '0 0 24px #88ccff, 0 0 48px #4488ff';
-    this.uiMsgSub.textContent     = '護衛�E功！�Eての侵食を撁E��した�E�E;
-    this.uiMsgWrap.style.display  = 'flex';
+    this.uiMsgSub.textContent = '守り切った。すべての縁を守った。';
+    this.uiMsgWrap.style.display = 'flex';
   },
-
-}); // end AFRAME.registerComponent
+});
 </script>
 </body>
 </html>
-
