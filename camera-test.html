@@ -1,0 +1,26 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="background:#000;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:20px;font-family:sans-serif;">
+<p id="msg" style="font-size:18px;">Ready</p>
+<button id="btn" style="padding:20px 40px;font-size:20px;background:#4488ff;color:#fff;border:none;border-radius:8px;" onclick="testCamera()">Test Camera</button>
+<video id="video" autoplay playsinline style="width:100%;max-width:400px;display:none;"></video>
+<script>
+function testCamera(){
+  document.getElementById('msg').textContent = 'Requesting...';
+  navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})
+    .then(function(stream){
+      document.getElementById('msg').textContent = 'Camera OK!';
+      document.getElementById('video').srcObject = stream;
+      document.getElementById('video').style.display = 'block';
+    })
+    .catch(function(e){
+      document.getElementById('msg').textContent = 'Error: '+e.message;
+    });
+}
+</script>
+</body>
+</html>
