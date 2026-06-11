@@ -8,20 +8,20 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { overflow: hidden; background: #000; font-family: sans-serif; }
 
-    #camera-prompt {
+    #overlay {
       position: fixed; inset: 0; background: #111;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
       gap: 24px; z-index: 9999; color: #fff;
       text-align: center; padding: 32px;
     }
-    #camera-prompt h1 { font-size: 22px; color: #aaddff; }
-    #camera-prompt p { font-size: 15px; color: rgba(255,255,255,0.8); line-height: 1.6; }
+    #overlay h1 { font-size: 22px; color: #aaddff; }
+    #overlay p { font-size: 15px; color: rgba(255,255,255,0.8); line-height: 1.6; }
     #start-btn {
       padding: 20px 48px; font-size: 20px;
       background: #4488ff; color: #fff;
-      border: none; border-radius: 12px; cursor: pointer;
-      touch-action: manipulation;
+      border: none; border-radius: 12px;
+      touch-action: manipulation; cursor: pointer;
     }
     #status { font-size: 13px; color: #aaa; min-height: 20px; }
 
@@ -42,17 +42,30 @@
     #wave-wrap { position: absolute; top: 44px; right: 16px; color: rgba(170,221,255,0.85); font-size: 13px; }
     #scan-prompt { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.8); font-size: 15px; text-align: center; white-space: nowrap; }
     #tap-hint { position: absolute; bottom: 44px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.75); font-size: 15px; white-space: nowrap; display: none; }
-    #msg-wrap { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; display: none; flex-direction: column; align-items: center; gap: 14px; }
-    #msg-title { font-size: clamp(40px, 12vw, 64px); font-weight: bold; }
-    #msg-sub { font-size: clamp(14px, 4vw, 18px); color: rgba(255,255,255,0.8); }
+    #msg-wrap { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); text-align: center; display: none; flex-direction: column; align-items: center; gap: 14px; }
+    #msg-title { font-size: clamp(40px,12vw,64px); font-weight: bold; }
+    #msg-sub { font-size: clamp(14px,4vw,18px); color: rgba(255,255,255,0.8); }
     #damage-flash { position: fixed; inset: 0; background: rgba(255,60,60,0.35); pointer-events: none; opacity: 0; transition: opacity 0.1s; }
   </style>
 </head>
 <body>
 
-<div id="camera-prompt">
+<script>
+// カメラ許可済みかチェック
+navigator.permissions && navigator.permissions.query({name:'camera'}).then(function(result){
+  if(result.state === 'granted'){
+    // 許可済みならオーバーレイを非表示にしてARを起動
+    document.addEventListener('DOMContentLoaded', function(){
+      document.getElementById('overlay').style.display = 'none';
+      document.getElementById('ui').style.display = 'block';
+    });
+  }
+});
+</script>
+
+<div id="overlay">
   <h1>AR Guard Game</h1>
-  <p>Camera access required.<br>Tap the button below to start.</p>
+  <p>Tap the button to start.<br>Camera access will be requested.</p>
   <button id="start-btn">START GAME</button>
   <p id="status">Ready</p>
 </div>
@@ -74,216 +87,6 @@
 </div>
 
 <script>
-// ゲームロジック（MindAR読み込み後に登録）
-function registerGameManager() {
-  AFRAME.registerComponent('game-manager', {
-    init: function () {
-      this.particles     = [];
-      this.hp            = 100;
-      this.gameActive    = false;
-      this.gameOver      = false;
-      this.gameWon       = false;
-      this.currentWave   = 0;
-      this.totalWaves    = 5;
-      this.waveInterval  = 4200;
-      this.nextWaveAt    = null;
-      this.particleSpeed = 0.24;
-
-      this.uiHpBar    = document.getElementById('hp-bar');
-      this.uiHpVal    = document.getElementById('hp-val');
-      this.uiWaveCur  = document.getElementById('wave-cur');
-      this.uiWaveTot  = document.getElementById('wave-tot');
-      this.uiScan     = document.getElementById('scan-prompt');
-      this.uiTapHint  = document.getElementById('tap-hint');
-      this.uiMsgWrap  = document.getElementById('msg-wrap');
-      this.uiMsgTitle = document.getElementById('msg-title');
-      this.uiMsgSub   = document.getElementById('msg-sub');
-      this.uiFlash    = document.getElementById('damage-flash');
-
-      this.uiWaveTot.textContent = this.totalWaves;
-      this.createCharacter();
-
-      const target = this.el.closest('[mindar-image-target]');
-      target.addEventListener('targetFound', () => this.onTargetFound());
-      target.addEventListener('targetLost',  () => this.onTargetLost());
-
-      document.addEventListener('click',    (e) => this.onTap(e));
-      document.addEventListener('touchend', (e) => { e.preventDefault(); this.onTap(e); }, { passive: false });
-    },
-
-    createCharacter: function () {
-      const root = this.el;
-      const mat  = 'shader: flat; color: #aaddff; wireframe: true; opacity: 0.9';
-      const mkS = (pos, r) => { const e = document.createElement('a-sphere'); e.setAttribute('position',pos); e.setAttribute('radius',r); e.setAttribute('material',mat); return e; };
-      const mkC = (pos, r, h) => { const e = document.createElement('a-cylinder'); e.setAttribute('position',pos); e.setAttribute('radius',r); e.setAttribute('height',h); e.setAttribute('material',mat); return e; };
-      const mkB = (pos, w, h, d, rz) => { const e = document.createElement('a-box'); e.setAttribute('position',pos); e.setAttribute('width',w); e.setAttribute('height',h); e.setAttribute('depth',d); e.setAttribute('rotation',`0 0 ${rz}`); e.setAttribute('material',mat); return e; };
-      root.appendChild(mkS('0 0.23 0', 0.065));
-      root.appendChild(mkC('0 0.155 0', 0.018, 0.04));
-      root.appendChild(mkC('0 0.07 0', 0.055, 0.19));
-      root.appendChild(mkB('-0.115 0.10 0', 0.022, 0.15, 0.022, 28));
-      root.appendChild(mkB(' 0.115 0.10 0', 0.022, 0.15, 0.022, -28));
-      root.appendChild(mkB('-0.038 -0.09 0', 0.022, 0.19, 0.022, 9));
-      root.appendChild(mkB(' 0.038 -0.09 0', 0.022, 0.19, 0.022, -9));
-      const aura = document.createElement('a-sphere');
-      aura.setAttribute('radius', '0.22');
-      aura.setAttribute('material', 'shader: flat; color: #4488ff; transparent: true; opacity: 0.08; side: double');
-      aura.setAttribute('animation', 'property: scale; from: 1 1 1; to: 1.08 1.08 1.08; dur: 1800; dir: alternate; loop: true; easing: easeInOutSine');
-      root.appendChild(aura);
-    },
-
-    onTargetFound: function () {
-      if (this.gameOver || this.gameWon) return;
-      this.gameActive = true;
-      this.uiScan.style.opacity    = '0';
-      this.uiTapHint.style.display = 'block';
-      if (this.currentWave === 0 && this.nextWaveAt === null) {
-        this.nextWaveAt = performance.now() + 1500;
-      }
-    },
-
-    onTargetLost: function () {
-      this.gameActive = false;
-      if (!this.gameOver && !this.gameWon) this.uiScan.style.opacity = '1';
-    },
-
-    spawnWave: function () {
-      if (this.currentWave >= this.totalWaves) return;
-      this.currentWave++;
-      this.uiWaveCur.textContent = this.currentWave;
-      const D = 0.72;
-      [[0,D],[0,-D],[-D,0],[D,0]].forEach(([x,y]) => this.spawnParticle(x,y));
-    },
-
-    spawnParticle: function (sx, sy) {
-      const wrap = document.createElement('a-entity');
-      wrap.setAttribute('position', `${sx} ${sy} 0.02`);
-      const core = document.createElement('a-sphere');
-      core.setAttribute('radius', '0.032');
-      core.setAttribute('material', 'shader: flat; color: #88ddff; opacity: 0.95');
-      core.setAttribute('animation', 'property: scale; from: 1 1 1; to: 1.35 1.35 1.35; dur: 600; dir: alternate; loop: true; easing: easeInOutSine');
-      wrap.appendChild(core);
-      const glow = document.createElement('a-sphere');
-      glow.setAttribute('radius', '0.062');
-      glow.setAttribute('material', 'shader: flat; color: #aaeeff; transparent: true; opacity: 0.28; side: double');
-      wrap.appendChild(glow);
-      const ring = document.createElement('a-ring');
-      ring.setAttribute('radius-inner', '0.04'); ring.setAttribute('radius-outer', '0.07');
-      ring.setAttribute('material', 'shader: flat; color: #66bbff; transparent: true; opacity: 0.35; side: double');
-      ring.setAttribute('animation', 'property: rotation; from: 0 0 0; to: 0 0 360; dur: 1200; loop: true; easing: linear');
-      wrap.appendChild(ring);
-      this.el.appendChild(wrap);
-      this.particles.push({ el: wrap, x: sx, y: sy, active: true });
-    },
-
-    tick: function (time, timeDelta) {
-      if (!this.gameActive || this.gameOver || this.gameWon) return;
-      const now = performance.now();
-      const dt  = Math.min(timeDelta, 100) / 1000;
-      if (this.currentWave < this.totalWaves && this.nextWaveAt && now >= this.nextWaveAt) {
-        this.spawnWave(); this.nextWaveAt = now + this.waveInterval;
-      }
-      const dead = [];
-      for (let i = 0; i < this.particles.length; i++) {
-        const p = this.particles[i];
-        if (!p.active) continue;
-        const dist = Math.sqrt(p.x*p.x + p.y*p.y);
-        if (dist < 0.055) {
-          p.active = false; p.el.parentNode && p.el.parentNode.removeChild(p.el); dead.push(i); this.takeDamage(20);
-        } else {
-          const r = this.particleSpeed * dt / dist;
-          p.x -= p.x*r; p.y -= p.y*r;
-          p.el.setAttribute('position', `${p.x} ${p.y} 0.02`);
-        }
-      }
-      for (let i = dead.length-1; i >= 0; i--) this.particles.splice(dead[i], 1);
-      if (this.currentWave >= this.totalWaves && this.particles.length === 0 && !this.gameWon) this.triggerWin();
-    },
-
-    onTap: function (e) {
-      if (!this.gameActive || this.gameOver || this.gameWon || this.particles.length === 0) return;
-      let nearest = null, minDist = Infinity;
-      for (const p of this.particles) {
-        if (!p.active) continue;
-        const d = Math.sqrt(p.x*p.x + p.y*p.y);
-        if (d < minDist) { minDist = d; nearest = p; }
-      }
-      if (!nearest) return;
-      nearest.active = false;
-      this.showHitEffect(nearest.x, nearest.y);
-      nearest.el.parentNode && nearest.el.parentNode.removeChild(nearest.el);
-      const idx = this.particles.indexOf(nearest);
-      if (idx > -1) this.particles.splice(idx, 1);
-      if (this.currentWave >= this.totalWaves && this.particles.length === 0 && !this.gameWon) setTimeout(() => this.triggerWin(), 300);
-    },
-
-    showHitEffect: function (x, y) {
-      const burst = document.createElement('a-entity');
-      burst.setAttribute('position', `${x} ${y} 0.02`);
-      const flash = document.createElement('a-sphere');
-      flash.setAttribute('radius', '0.11');
-      flash.setAttribute('material', 'shader: flat; color: #ffffff; transparent: true; opacity: 0.85');
-      burst.appendChild(flash);
-      const ring = document.createElement('a-ring');
-      ring.setAttribute('radius-inner', '0.06'); ring.setAttribute('radius-outer', '0.14');
-      ring.setAttribute('material', 'shader: flat; color: #88ddff; transparent: true; opacity: 0.7; side: double');
-      burst.appendChild(ring);
-      this.el.appendChild(burst);
-      let t = 0;
-      const animate = () => {
-        t += 0.12; const op = Math.max(0, 1-t);
-        if (op <= 0) { burst.parentNode && burst.parentNode.removeChild(burst); return; }
-        flash.setAttribute('material', `shader: flat; color: #ffffff; transparent: true; opacity: ${op*0.85}`);
-        ring.setAttribute('material',  `shader: flat; color: #88ddff; transparent: true; opacity: ${op*0.7}; side: double`);
-        burst.setAttribute('scale', `${1+t*2.5} ${1+t*2.5} 1`);
-        requestAnimationFrame(animate);
-      };
-      requestAnimationFrame(animate);
-    },
-
-    takeDamage: function (amount) {
-      if (this.gameOver || this.gameWon) return;
-      this.hp = Math.max(0, this.hp - amount); this.updateHPUI(); this.flashDamage();
-      if (this.hp <= 0) this.triggerGameOver();
-    },
-
-    flashDamage: function () {
-      this.uiFlash.style.opacity = '1';
-      clearTimeout(this._flashTimer);
-      this._flashTimer = setTimeout(() => { this.uiFlash.style.opacity = '0'; }, 120);
-    },
-
-    updateHPUI: function () {
-      this.uiHpBar.style.width = this.hp + '%'; this.uiHpVal.textContent = this.hp;
-      this.uiHpBar.style.background = this.hp > 60 ? 'linear-gradient(90deg,#00ff99,#00cc66)' : this.hp > 30 ? 'linear-gradient(90deg,#ffcc00,#ff8800)' : 'linear-gradient(90deg,#ff5555,#cc0000)';
-    },
-
-    triggerGameOver: function () {
-      if (this.gameOver) return;
-      this.gameOver = true; this.gameActive = false;
-      this.particles.forEach(p => p.el.parentNode && p.el.parentNode.removeChild(p.el)); this.particles = [];
-      this.uiTapHint.style.display = 'none'; this.uiScan.style.opacity = '0';
-      this.uiMsgTitle.textContent = 'GAME OVER';
-      this.uiMsgTitle.style.color = '#ff5555';
-      this.uiMsgTitle.style.textShadow = '0 0 20px #ff3333';
-      this.uiMsgSub.textContent = 'TAP to retry';
-      this.uiMsgWrap.style.display = 'flex';
-      setTimeout(() => { document.addEventListener('click', () => location.reload(), { once: true }); }, 800);
-    },
-
-    triggerWin: function () {
-      if (this.gameWon) return;
-      this.gameWon = true; this.gameActive = false;
-      this.uiTapHint.style.display = 'none'; this.uiScan.style.opacity = '0';
-      this.uiMsgTitle.textContent = 'Thank you';
-      this.uiMsgTitle.style.color = '#aaddff';
-      this.uiMsgTitle.style.textShadow = '0 0 24px #88ccff, 0 0 48px #4488ff';
-      this.uiMsgSub.textContent = 'You protected all connections.';
-      this.uiMsgWrap.style.display = 'flex';
-    },
-  });
-}
-
-// ボタン処理
 document.getElementById('start-btn').addEventListener('click', function() {
   var status = document.getElementById('status');
   status.textContent = 'Requesting camera...';
@@ -291,48 +94,238 @@ document.getElementById('start-btn').addEventListener('click', function() {
   navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
     .then(function(stream) {
       stream.getTracks().forEach(function(t) { t.stop(); });
-      status.textContent = 'Loading AR library...';
-
-      // MindARを動的に読み込む
-      var script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js';
-      script.onload = function() {
-        status.textContent = 'Starting AR...';
-        registerGameManager();
-
-        // A-Sceneを動的に生成
-        var scene = document.createElement('a-scene');
-        scene.setAttribute('mindar-image', 'imageTargetSrc: ./targets.mind; autoStart: true; uiLoading: yes; uiScanning: yes; uiError: yes');
-        scene.setAttribute('color-space', 'sRGB');
-        scene.setAttribute('renderer', 'colorManagement: true');
-        scene.setAttribute('vr-mode-ui', 'enabled: false');
-        scene.setAttribute('device-orientation-permission-ui', 'enabled: false');
-
-        var cam = document.createElement('a-camera');
-        cam.setAttribute('position', '0 0 0');
-        cam.setAttribute('look-controls', 'enabled: false');
-        scene.appendChild(cam);
-
-        var targetEl = document.createElement('a-entity');
-        targetEl.setAttribute('mindar-image-target', 'targetIndex: 0');
-        var gm = document.createElement('a-entity');
-        gm.setAttribute('game-manager', '');
-        targetEl.appendChild(gm);
-        scene.appendChild(targetEl);
-
-        document.body.appendChild(scene);
-
-        document.getElementById('camera-prompt').style.display = 'none';
-        document.getElementById('ui').style.display = 'block';
-      };
-      script.onerror = function() {
-        status.textContent = 'Failed to load AR library. Check connection.';
-      };
-      document.head.appendChild(script);
+      status.textContent = 'Camera OK! Reloading...';
+      // カメラ許可取得後にリロード（今度はMindARが自動起動する）
+      setTimeout(function(){ location.reload(); }, 500);
     })
     .catch(function(err) {
-      status.textContent = 'Camera error: ' + err.message;
+      status.textContent = 'Error: ' + err.message;
     });
+});
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
+<a-scene
+  mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiLoading: yes; uiScanning: yes; uiError: yes"
+  color-space="sRGB"
+  renderer="colorManagement: true"
+  vr-mode-ui="enabled: false"
+  device-orientation-permission-ui="enabled: false"
+  embedded>
+
+  <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+  <a-entity mindar-image-target="targetIndex: 0">
+    <a-entity game-manager></a-entity>
+  </a-entity>
+</a-scene>
+
+<script>
+AFRAME.registerComponent('game-manager', {
+  init: function () {
+    this.particles     = [];
+    this.hp            = 100;
+    this.gameActive    = false;
+    this.gameOver      = false;
+    this.gameWon       = false;
+    this.currentWave   = 0;
+    this.totalWaves    = 5;
+    this.waveInterval  = 4200;
+    this.nextWaveAt    = null;
+    this.particleSpeed = 0.24;
+
+    this.uiHpBar    = document.getElementById('hp-bar');
+    this.uiHpVal    = document.getElementById('hp-val');
+    this.uiWaveCur  = document.getElementById('wave-cur');
+    this.uiWaveTot  = document.getElementById('wave-tot');
+    this.uiScan     = document.getElementById('scan-prompt');
+    this.uiTapHint  = document.getElementById('tap-hint');
+    this.uiMsgWrap  = document.getElementById('msg-wrap');
+    this.uiMsgTitle = document.getElementById('msg-title');
+    this.uiMsgSub   = document.getElementById('msg-sub');
+    this.uiFlash    = document.getElementById('damage-flash');
+
+    this.uiWaveTot.textContent = this.totalWaves;
+    this.createCharacter();
+
+    const target = this.el.closest('[mindar-image-target]');
+    target.addEventListener('targetFound', () => this.onTargetFound());
+    target.addEventListener('targetLost',  () => this.onTargetLost());
+
+    document.addEventListener('click',    (e) => this.onTap(e));
+    document.addEventListener('touchend', (e) => { e.preventDefault(); this.onTap(e); }, { passive: false });
+  },
+
+  createCharacter: function () {
+    const root = this.el;
+    const mat  = 'shader: flat; color: #aaddff; wireframe: true; opacity: 0.9';
+    const mkS = (pos, r) => { const e = document.createElement('a-sphere'); e.setAttribute('position',pos); e.setAttribute('radius',r); e.setAttribute('material',mat); return e; };
+    const mkC = (pos, r, h) => { const e = document.createElement('a-cylinder'); e.setAttribute('position',pos); e.setAttribute('radius',r); e.setAttribute('height',h); e.setAttribute('material',mat); return e; };
+    const mkB = (pos, w, h, d, rz) => { const e = document.createElement('a-box'); e.setAttribute('position',pos); e.setAttribute('width',w); e.setAttribute('height',h); e.setAttribute('depth',d); e.setAttribute('rotation',`0 0 ${rz}`); e.setAttribute('material',mat); return e; };
+    root.appendChild(mkS('0 0.23 0', 0.065));
+    root.appendChild(mkC('0 0.155 0', 0.018, 0.04));
+    root.appendChild(mkC('0 0.07 0', 0.055, 0.19));
+    root.appendChild(mkB('-0.115 0.10 0', 0.022, 0.15, 0.022, 28));
+    root.appendChild(mkB(' 0.115 0.10 0', 0.022, 0.15, 0.022, -28));
+    root.appendChild(mkB('-0.038 -0.09 0', 0.022, 0.19, 0.022, 9));
+    root.appendChild(mkB(' 0.038 -0.09 0', 0.022, 0.19, 0.022, -9));
+    const aura = document.createElement('a-sphere');
+    aura.setAttribute('radius', '0.22');
+    aura.setAttribute('material', 'shader: flat; color: #4488ff; transparent: true; opacity: 0.08; side: double');
+    aura.setAttribute('animation', 'property: scale; from: 1 1 1; to: 1.08 1.08 1.08; dur: 1800; dir: alternate; loop: true; easing: easeInOutSine');
+    root.appendChild(aura);
+  },
+
+  onTargetFound: function () {
+    if (this.gameOver || this.gameWon) return;
+    this.gameActive = true;
+    this.uiScan.style.opacity    = '0';
+    this.uiTapHint.style.display = 'block';
+    if (this.currentWave === 0 && this.nextWaveAt === null) {
+      this.nextWaveAt = performance.now() + 1500;
+    }
+  },
+
+  onTargetLost: function () {
+    this.gameActive = false;
+    if (!this.gameOver && !this.gameWon) this.uiScan.style.opacity = '1';
+  },
+
+  spawnWave: function () {
+    if (this.currentWave >= this.totalWaves) return;
+    this.currentWave++;
+    this.uiWaveCur.textContent = this.currentWave;
+    const D = 0.72;
+    [[0,D],[0,-D],[-D,0],[D,0]].forEach(([x,y]) => this.spawnParticle(x,y));
+  },
+
+  spawnParticle: function (sx, sy) {
+    const wrap = document.createElement('a-entity');
+    wrap.setAttribute('position', `${sx} ${sy} 0.02`);
+    const core = document.createElement('a-sphere');
+    core.setAttribute('radius', '0.032');
+    core.setAttribute('material', 'shader: flat; color: #88ddff; opacity: 0.95');
+    core.setAttribute('animation', 'property: scale; from: 1 1 1; to: 1.35 1.35 1.35; dur: 600; dir: alternate; loop: true; easing: easeInOutSine');
+    wrap.appendChild(core);
+    const glow = document.createElement('a-sphere');
+    glow.setAttribute('radius', '0.062');
+    glow.setAttribute('material', 'shader: flat; color: #aaeeff; transparent: true; opacity: 0.28; side: double');
+    wrap.appendChild(glow);
+    const ring = document.createElement('a-ring');
+    ring.setAttribute('radius-inner', '0.04'); ring.setAttribute('radius-outer', '0.07');
+    ring.setAttribute('material', 'shader: flat; color: #66bbff; transparent: true; opacity: 0.35; side: double');
+    ring.setAttribute('animation', 'property: rotation; from: 0 0 0; to: 0 0 360; dur: 1200; loop: true; easing: linear');
+    wrap.appendChild(ring);
+    this.el.appendChild(wrap);
+    this.particles.push({ el: wrap, x: sx, y: sy, active: true });
+  },
+
+  tick: function (time, timeDelta) {
+    if (!this.gameActive || this.gameOver || this.gameWon) return;
+    const now = performance.now();
+    const dt  = Math.min(timeDelta, 100) / 1000;
+    if (this.currentWave < this.totalWaves && this.nextWaveAt && now >= this.nextWaveAt) {
+      this.spawnWave(); this.nextWaveAt = now + this.waveInterval;
+    }
+    const dead = [];
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
+      if (!p.active) continue;
+      const dist = Math.sqrt(p.x*p.x + p.y*p.y);
+      if (dist < 0.055) {
+        p.active = false; p.el.parentNode && p.el.parentNode.removeChild(p.el); dead.push(i); this.takeDamage(20);
+      } else {
+        const r = this.particleSpeed * dt / dist;
+        p.x -= p.x*r; p.y -= p.y*r;
+        p.el.setAttribute('position', `${p.x} ${p.y} 0.02`);
+      }
+    }
+    for (let i = dead.length-1; i >= 0; i--) this.particles.splice(dead[i], 1);
+    if (this.currentWave >= this.totalWaves && this.particles.length === 0 && !this.gameWon) this.triggerWin();
+  },
+
+  onTap: function (e) {
+    if (!this.gameActive || this.gameOver || this.gameWon || this.particles.length === 0) return;
+    let nearest = null, minDist = Infinity;
+    for (const p of this.particles) {
+      if (!p.active) continue;
+      const d = Math.sqrt(p.x*p.x + p.y*p.y);
+      if (d < minDist) { minDist = d; nearest = p; }
+    }
+    if (!nearest) return;
+    nearest.active = false;
+    this.showHitEffect(nearest.x, nearest.y);
+    nearest.el.parentNode && nearest.el.parentNode.removeChild(nearest.el);
+    const idx = this.particles.indexOf(nearest);
+    if (idx > -1) this.particles.splice(idx, 1);
+    if (this.currentWave >= this.totalWaves && this.particles.length === 0 && !this.gameWon) setTimeout(() => this.triggerWin(), 300);
+  },
+
+  showHitEffect: function (x, y) {
+    const burst = document.createElement('a-entity');
+    burst.setAttribute('position', `${x} ${y} 0.02`);
+    const flash = document.createElement('a-sphere');
+    flash.setAttribute('radius', '0.11');
+    flash.setAttribute('material', 'shader: flat; color: #ffffff; transparent: true; opacity: 0.85');
+    burst.appendChild(flash);
+    const ring = document.createElement('a-ring');
+    ring.setAttribute('radius-inner', '0.06'); ring.setAttribute('radius-outer', '0.14');
+    ring.setAttribute('material', 'shader: flat; color: #88ddff; transparent: true; opacity: 0.7; side: double');
+    burst.appendChild(ring);
+    this.el.appendChild(burst);
+    let t = 0;
+    const animate = () => {
+      t += 0.12; const op = Math.max(0, 1-t);
+      if (op <= 0) { burst.parentNode && burst.parentNode.removeChild(burst); return; }
+      flash.setAttribute('material', `shader: flat; color: #ffffff; transparent: true; opacity: ${op*0.85}`);
+      ring.setAttribute('material', `shader: flat; color: #88ddff; transparent: true; opacity: ${op*0.7}; side: double`);
+      burst.setAttribute('scale', `${1+t*2.5} ${1+t*2.5} 1`);
+      requestAnimationFrame(animate);
+    };
+    requestAnimationFrame(animate);
+  },
+
+  takeDamage: function (amount) {
+    if (this.gameOver || this.gameWon) return;
+    this.hp = Math.max(0, this.hp - amount); this.updateHPUI(); this.flashDamage();
+    if (this.hp <= 0) this.triggerGameOver();
+  },
+
+  flashDamage: function () {
+    this.uiFlash.style.opacity = '1';
+    clearTimeout(this._flashTimer);
+    this._flashTimer = setTimeout(() => { this.uiFlash.style.opacity = '0'; }, 120);
+  },
+
+  updateHPUI: function () {
+    this.uiHpBar.style.width = this.hp + '%'; this.uiHpVal.textContent = this.hp;
+    this.uiHpBar.style.background = this.hp > 60 ? 'linear-gradient(90deg,#00ff99,#00cc66)' : this.hp > 30 ? 'linear-gradient(90deg,#ffcc00,#ff8800)' : 'linear-gradient(90deg,#ff5555,#cc0000)';
+  },
+
+  triggerGameOver: function () {
+    if (this.gameOver) return;
+    this.gameOver = true; this.gameActive = false;
+    this.particles.forEach(p => p.el.parentNode && p.el.parentNode.removeChild(p.el)); this.particles = [];
+    this.uiTapHint.style.display = 'none'; this.uiScan.style.opacity = '0';
+    this.uiMsgTitle.textContent = 'GAME OVER';
+    this.uiMsgTitle.style.color = '#ff5555';
+    this.uiMsgTitle.style.textShadow = '0 0 20px #ff3333';
+    this.uiMsgSub.textContent = 'TAP to retry';
+    this.uiMsgWrap.style.display = 'flex';
+    setTimeout(() => { document.addEventListener('click', () => location.reload(), { once: true }); }, 800);
+  },
+
+  triggerWin: function () {
+    if (this.gameWon) return;
+    this.gameWon = true; this.gameActive = false;
+    this.uiTapHint.style.display = 'none'; this.uiScan.style.opacity = '0';
+    this.uiMsgTitle.textContent = 'Thank you';
+    this.uiMsgTitle.style.color = '#aaddff';
+    this.uiMsgTitle.style.textShadow = '0 0 24px #88ccff, 0 0 48px #4488ff';
+    this.uiMsgSub.textContent = 'You protected all connections.';
+    this.uiMsgWrap.style.display = 'flex';
+  },
 });
 </script>
 
