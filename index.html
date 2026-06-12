@@ -1,39 +1,88 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>AR Game</title>
+<title>AR Guard Game</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:#000; font-family:sans-serif; overflow:hidden; }
-#overlay { position:fixed; inset:0; background:#111; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:24px; z-index:9999; color:#fff; text-align:center; padding:32px; }
+
+#overlay {
+  position:fixed; inset:0; background:#111;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  gap:24px; z-index:9999; color:#fff;
+  text-align:center; padding:32px;
+}
 #overlay h1 { font-size:22px; color:#aaddff; }
-#start-btn { padding:20px 48px; font-size:20px; background:#4488ff; color:#fff; border:none; border-radius:12px; touch-action:manipulation; }
+#overlay p { font-size:15px; color:rgba(255,255,255,0.8); line-height:1.8; }
+#start-btn {
+  padding:20px 48px; font-size:20px;
+  background:#4488ff; color:#fff;
+  border:none; border-radius:12px;
+  touch-action:manipulation; cursor:pointer;
+}
 #status { font-size:13px; color:#aaa; }
-#ui { position:fixed; inset:0; z-index:1000; pointer-events:none; display:none; }
-#hp-wrap { position:absolute; top:14px; left:50%; transform:translateX(-50%); width:min(80vw,360px); display:flex; align-items:center; gap:8px; }
+
+video {
+  position:fixed;
+  top:0; left:0;
+  width:100vw; height:100vh;
+  object-fit:cover;
+  z-index:1;
+}
+canvas {
+  position:fixed;
+  top:0; left:0;
+  width:100vw; height:100vh;
+  z-index:2;
+}
+
+#ui {
+  position:fixed; inset:0;
+  z-index:10; pointer-events:none;
+}
+#hp-wrap {
+  position:absolute; top:14px; left:50%;
+  transform:translateX(-50%);
+  width:min(80vw,360px);
+  display:flex; align-items:center; gap:8px;
+}
 #hp-label { color:#aaddff; font-size:13px; font-weight:bold; white-space:nowrap; }
 #hp-bg { flex:1; height:18px; background:rgba(0,0,0,0.55); border:1.5px solid rgba(170,221,255,0.6); border-radius:9px; overflow:hidden; }
 #hp-bar { height:100%; width:100%; border-radius:9px; background:linear-gradient(90deg,#00ff99,#00cc66); transition:width 0.35s; }
 #hp-val { color:#fff; font-size:13px; min-width:30px; text-align:right; }
 #wave-wrap { position:absolute; top:44px; right:16px; color:rgba(170,221,255,0.85); font-size:13px; }
-#scan-prompt { position:absolute; bottom:80px; left:50%; transform:translateX(-50%); color:rgba(255,255,255,0.8); font-size:15px; white-space:nowrap; }
-#tap-hint { position:absolute; bottom:44px; left:50%; transform:translateX(-50%); color:rgba(255,255,255,0.75); font-size:15px; white-space:nowrap; display:none; }
-#msg-wrap { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; display:none; flex-direction:column; align-items:center; gap:14px; }
+#tap-hint {
+  position:absolute; bottom:44px; left:50%;
+  transform:translateX(-50%);
+  color:rgba(255,255,255,0.75); font-size:15px; white-space:nowrap;
+  animation:pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:0.75;} 50%{opacity:0.3;} }
+#msg-wrap {
+  position:absolute; top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  text-align:center; display:none;
+  flex-direction:column; align-items:center; gap:14px;
+}
 #msg-title { font-size:clamp(40px,12vw,64px); font-weight:bold; }
 #msg-sub { font-size:clamp(14px,4vw,18px); color:rgba(255,255,255,0.8); }
-#damage-flash { position:fixed; inset:0; background:rgba(255,60,60,0.35); pointer-events:none; opacity:0; transition:opacity 0.1s; }
+#damage-flash { position:fixed; inset:0; background:rgba(255,60,60,0.35); pointer-events:none; opacity:0; transition:opacity 0.1s; z-index:11; }
 </style>
 </head>
 <body>
 
 <div id="overlay">
   <h1>AR Guard Game</h1>
-  <p>Tap to start.<br>Camera access required.</p>
-  <button id="start-btn">START GAME</button>
+  <p>カメラを使ったゲームです。<br>敵をタップして撃退してください。</p>
+  <button id="start-btn" onclick="startGame()">START GAME</button>
   <p id="status">Ready</p>
 </div>
+
+<video id="video" autoplay playsinline muted></video>
+<canvas id="canvas"></canvas>
 
 <div id="damage-flash"></div>
 <div id="ui">
@@ -43,7 +92,6 @@ body { background:#000; font-family:sans-serif; overflow:hidden; }
     <div id="hp-val">100</div>
   </div>
   <div id="wave-wrap">Wave <span id="wave-cur">0</span> / <span id="wave-tot">5</span></div>
-  <div id="scan-prompt">Scan marker</div>
   <div id="tap-hint">TAP to shoot</div>
   <div id="msg-wrap">
     <div id="msg-title"></div>
@@ -52,169 +100,201 @@ body { background:#000; font-family:sans-serif; overflow:hidden; }
 </div>
 
 <script>
-document.getElementById('start-btn').addEventListener('click', function(){
+var video   = document.getElementById('video');
+var canvas  = document.getElementById('canvas');
+var ctx     = canvas.getContext('2d');
+
+var hp=100, gameOver=false, gameWon=false;
+var totalWaves=5, currentWave=0, waveInterval=5000, nextWaveAt=null;
+var particles=[], hitEffects=[], lastTime=0;
+
+var uiHpBar=document.getElementById('hp-bar');
+var uiHpVal=document.getElementById('hp-val');
+var uiWaveCur=document.getElementById('wave-cur');
+var uiWaveTot=document.getElementById('wave-tot');
+var uiMsgWrap=document.getElementById('msg-wrap');
+var uiMsgTitle=document.getElementById('msg-title');
+var uiMsgSub=document.getElementById('msg-sub');
+var uiFlash=document.getElementById('damage-flash');
+
+uiWaveTot.textContent = totalWaves;
+
+function startGame(){
   var status = document.getElementById('status');
   status.textContent = 'Requesting camera...';
-  navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})
+
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
     .then(function(stream){
-      stream.getTracks().forEach(function(t){ t.stop(); });
-      status.textContent = 'Loading...';
-      // MindAR+AFrameをscriptタグで動的追加
-      var s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js';
-      s.onload = function(){
-        status.textContent = 'Initializing...';
-        // AFrame sceneをinnerHTMLで挿入
-        var div = document.createElement('div');
-        div.innerHTML = '<a-scene mindar-image="imageTargetSrc:./targets.mind;autoStart:true;uiLoading:yes;uiScanning:yes" color-space="sRGB" renderer="colorManagement:true" vr-mode-ui="enabled:false" device-orientation-permission-ui="enabled:false" embedded><a-camera position="0 0 0" look-controls="enabled:false"></a-camera><a-entity mindar-image-target="targetIndex:0"><a-entity game-manager></a-entity></a-entity></a-scene>';
-        document.body.appendChild(div.firstChild);
-        document.getElementById('overlay').style.display = 'none';
-        document.getElementById('ui').style.display = 'block';
-      };
-      document.head.appendChild(s);
+      status.textContent = 'Camera OK!';
+      video.srcObject = stream;
+      video.play();
+
+      canvas.width  = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      document.getElementById('overlay').style.display = 'none';
+
+      nextWaveAt = performance.now() + 2000;
+      requestAnimationFrame(gameLoop);
     })
     .catch(function(e){
-      status.textContent = 'Error: '+e.message;
+      status.textContent = 'Error: ' + e.message;
     });
-});
-</script>
+}
 
-<script>
-function registerGM(){
-  AFRAME.registerComponent('game-manager',{
-    init:function(){
-      this.particles=[];this.hp=100;this.gameActive=false;this.gameOver=false;this.gameWon=false;
-      this.currentWave=0;this.totalWaves=5;this.waveInterval=4200;this.nextWaveAt=null;this.particleSpeed=0.24;
-      this.uiHpBar=document.getElementById('hp-bar');this.uiHpVal=document.getElementById('hp-val');
-      this.uiWaveCur=document.getElementById('wave-cur');this.uiWaveTot=document.getElementById('wave-tot');
-      this.uiScan=document.getElementById('scan-prompt');this.uiTapHint=document.getElementById('tap-hint');
-      this.uiMsgWrap=document.getElementById('msg-wrap');this.uiMsgTitle=document.getElementById('msg-title');
-      this.uiMsgSub=document.getElementById('msg-sub');this.uiFlash=document.getElementById('damage-flash');
-      this.uiWaveTot.textContent=this.totalWaves;
-      this.createCharacter();
-      var target=this.el.closest('[mindar-image-target]');
-      target.addEventListener('targetFound',()=>this.onTargetFound());
-      target.addEventListener('targetLost',()=>this.onTargetLost());
-      document.addEventListener('click',(e)=>this.onTap(e));
-      document.addEventListener('touchend',(e)=>{e.preventDefault();this.onTap(e);},{passive:false});
-    },
-    createCharacter:function(){
-      var root=this.el,mat='shader:flat;color:#aaddff;wireframe:true;opacity:0.9';
-      var mkS=(p,r)=>{var e=document.createElement('a-sphere');e.setAttribute('position',p);e.setAttribute('radius',r);e.setAttribute('material',mat);return e;};
-      var mkC=(p,r,h)=>{var e=document.createElement('a-cylinder');e.setAttribute('position',p);e.setAttribute('radius',r);e.setAttribute('height',h);e.setAttribute('material',mat);return e;};
-      var mkB=(p,w,h,d,rz)=>{var e=document.createElement('a-box');e.setAttribute('position',p);e.setAttribute('width',w);e.setAttribute('height',h);e.setAttribute('depth',d);e.setAttribute('rotation','0 0 '+rz);e.setAttribute('material',mat);return e;};
-      root.appendChild(mkS('0 0.23 0',0.065));root.appendChild(mkC('0 0.155 0',0.018,0.04));
-      root.appendChild(mkC('0 0.07 0',0.055,0.19));root.appendChild(mkB('-0.115 0.10 0',0.022,0.15,0.022,28));
-      root.appendChild(mkB(' 0.115 0.10 0',0.022,0.15,0.022,-28));root.appendChild(mkB('-0.038 -0.09 0',0.022,0.19,0.022,9));
-      root.appendChild(mkB(' 0.038 -0.09 0',0.022,0.19,0.022,-9));
-      var aura=document.createElement('a-sphere');
-      aura.setAttribute('radius','0.22');aura.setAttribute('material','shader:flat;color:#4488ff;transparent:true;opacity:0.08;side:double');
-      aura.setAttribute('animation','property:scale;from:1 1 1;to:1.08 1.08 1.08;dur:1800;dir:alternate;loop:true;easing:easeInOutSine');
-      root.appendChild(aura);
-    },
-    onTargetFound:function(){
-      if(this.gameOver||this.gameWon)return;
-      this.gameActive=true;this.uiScan.style.opacity='0';this.uiTapHint.style.display='block';
-      if(this.currentWave===0&&this.nextWaveAt===null)this.nextWaveAt=performance.now()+1500;
-    },
-    onTargetLost:function(){
-      this.gameActive=false;
-      if(!this.gameOver&&!this.gameWon)this.uiScan.style.opacity='1';
-    },
-    spawnWave:function(){
-      if(this.currentWave>=this.totalWaves)return;
-      this.currentWave++;this.uiWaveCur.textContent=this.currentWave;
-      var D=0.72;[[0,D],[0,-D],[-D,0],[D,0]].forEach(([x,y])=>this.spawnParticle(x,y));
-    },
-    spawnParticle:function(sx,sy){
-      var wrap=document.createElement('a-entity');wrap.setAttribute('position',sx+' '+sy+' 0.02');
-      var core=document.createElement('a-sphere');core.setAttribute('radius','0.032');
-      core.setAttribute('material','shader:flat;color:#88ddff;opacity:0.95');
-      core.setAttribute('animation','property:scale;from:1 1 1;to:1.35 1.35 1.35;dur:600;dir:alternate;loop:true;easing:easeInOutSine');
-      wrap.appendChild(core);
-      var glow=document.createElement('a-sphere');glow.setAttribute('radius','0.062');
-      glow.setAttribute('material','shader:flat;color:#aaeeff;transparent:true;opacity:0.28;side:double');wrap.appendChild(glow);
-      var ring=document.createElement('a-ring');ring.setAttribute('radius-inner','0.04');ring.setAttribute('radius-outer','0.07');
-      ring.setAttribute('material','shader:flat;color:#66bbff;transparent:true;opacity:0.35;side:double');
-      ring.setAttribute('animation','property:rotation;from:0 0 0;to:0 0 360;dur:1200;loop:true;easing:linear');
-      wrap.appendChild(ring);this.el.appendChild(wrap);
-      this.particles.push({el:wrap,x:sx,y:sy,active:true});
-    },
-    tick:function(time,timeDelta){
-      if(!this.gameActive||this.gameOver||this.gameWon)return;
-      var now=performance.now(),dt=Math.min(timeDelta,100)/1000;
-      if(this.currentWave<this.totalWaves&&this.nextWaveAt&&now>=this.nextWaveAt){this.spawnWave();this.nextWaveAt=now+this.waveInterval;}
-      var dead=[];
-      for(var i=0;i<this.particles.length;i++){
-        var p=this.particles[i];if(!p.active)continue;
-        var dist=Math.sqrt(p.x*p.x+p.y*p.y);
-        if(dist<0.055){p.active=false;p.el.parentNode&&p.el.parentNode.removeChild(p.el);dead.push(i);this.takeDamage(20);}
-        else{var r=this.particleSpeed*dt/dist;p.x-=p.x*r;p.y-=p.y*r;p.el.setAttribute('position',p.x+' '+p.y+' 0.02');}
-      }
-      for(var i=dead.length-1;i>=0;i--)this.particles.splice(dead[i],1);
-      if(this.currentWave>=this.totalWaves&&this.particles.length===0&&!this.gameWon)this.triggerWin();
-    },
-    onTap:function(e){
-      if(!this.gameActive||this.gameOver||this.gameWon||this.particles.length===0)return;
-      var nearest=null,minDist=Infinity;
-      for(var p of this.particles){if(!p.active)continue;var d=Math.sqrt(p.x*p.x+p.y*p.y);if(d<minDist){minDist=d;nearest=p;}}
-      if(!nearest)return;
-      nearest.active=false;this.showHitEffect(nearest.x,nearest.y);
-      nearest.el.parentNode&&nearest.el.parentNode.removeChild(nearest.el);
-      var idx=this.particles.indexOf(nearest);if(idx>-1)this.particles.splice(idx,1);
-      if(this.currentWave>=this.totalWaves&&this.particles.length===0&&!this.gameWon)setTimeout(()=>this.triggerWin(),300);
-    },
-    showHitEffect:function(x,y){
-      var burst=document.createElement('a-entity');burst.setAttribute('position',x+' '+y+' 0.02');
-      var flash=document.createElement('a-sphere');flash.setAttribute('radius','0.11');
-      flash.setAttribute('material','shader:flat;color:#ffffff;transparent:true;opacity:0.85');burst.appendChild(flash);
-      var ring=document.createElement('a-ring');ring.setAttribute('radius-inner','0.06');ring.setAttribute('radius-outer','0.14');
-      ring.setAttribute('material','shader:flat;color:#88ddff;transparent:true;opacity:0.7;side:double');burst.appendChild(ring);
-      this.el.appendChild(burst);
-      var t=0,self=this;
-      var animate=function(){
-        t+=0.12;var op=Math.max(0,1-t);
-        if(op<=0){burst.parentNode&&burst.parentNode.removeChild(burst);return;}
-        flash.setAttribute('material','shader:flat;color:#ffffff;transparent:true;opacity:'+(op*0.85));
-        ring.setAttribute('material','shader:flat;color:#88ddff;transparent:true;opacity:'+(op*0.7)+';side:double');
-        burst.setAttribute('scale',(1+t*2.5)+' '+(1+t*2.5)+' 1');requestAnimationFrame(animate);
-      };requestAnimationFrame(animate);
-    },
-    takeDamage:function(amount){
-      if(this.gameOver||this.gameWon)return;
-      this.hp=Math.max(0,this.hp-amount);this.updateHPUI();this.flashDamage();
-      if(this.hp<=0)this.triggerGameOver();
-    },
-    flashDamage:function(){
-      this.uiFlash.style.opacity='1';clearTimeout(this._flashTimer);
-      this._flashTimer=setTimeout(()=>{this.uiFlash.style.opacity='0';},120);
-    },
-    updateHPUI:function(){
-      this.uiHpBar.style.width=this.hp+'%';this.uiHpVal.textContent=this.hp;
-      this.uiHpBar.style.background=this.hp>60?'linear-gradient(90deg,#00ff99,#00cc66)':this.hp>30?'linear-gradient(90deg,#ffcc00,#ff8800)':'linear-gradient(90deg,#ff5555,#cc0000)';
-    },
-    triggerGameOver:function(){
-      if(this.gameOver)return;this.gameOver=true;this.gameActive=false;
-      this.particles.forEach(p=>p.el.parentNode&&p.el.parentNode.removeChild(p.el));this.particles=[];
-      this.uiTapHint.style.display='none';this.uiScan.style.opacity='0';
-      this.uiMsgTitle.textContent='GAME OVER';this.uiMsgTitle.style.color='#ff5555';
-      this.uiMsgTitle.style.textShadow='0 0 20px #ff3333';this.uiMsgSub.textContent='TAP to retry';
-      this.uiMsgWrap.style.display='flex';
-      setTimeout(()=>{document.addEventListener('click',()=>location.reload(),{once:true});},800);
-    },
-    triggerWin:function(){
-      if(this.gameWon)return;this.gameWon=true;this.gameActive=false;
-      this.uiTapHint.style.display='none';this.uiScan.style.opacity='0';
-      this.uiMsgTitle.textContent='Thank you';this.uiMsgTitle.style.color='#aaddff';
-      this.uiMsgTitle.style.textShadow='0 0 24px #88ccff,0 0 48px #4488ff';
-      this.uiMsgSub.textContent='You protected all connections.';this.uiMsgWrap.style.display='flex';
-    },
+window.addEventListener('resize', function(){
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+});
+
+function gameLoop(timestamp){
+  var dt = Math.min((timestamp - (lastTime||timestamp)) / 1000, 0.1);
+  lastTime = timestamp;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if(gameOver || gameWon){
+    requestAnimationFrame(gameLoop);
+    return;
+  }
+
+  var cx = canvas.width / 2;
+  var cy = canvas.height / 2;
+  var scale = Math.min(canvas.width, canvas.height) * 0.3;
+
+  drawCharacter(cx, cy, scale);
+
+  if(currentWave < totalWaves && nextWaveAt && timestamp >= nextWaveAt){
+    spawnWave(cx, cy, scale);
+    nextWaveAt = timestamp + waveInterval;
+  }
+
+  var speed = scale * 0.35 * dt;
+  for(var i = particles.length-1; i >= 0; i--){
+    var p = particles[i];
+    var dx = cx - p.x, dy = cy - p.y;
+    var dist = Math.sqrt(dx*dx + dy*dy);
+    if(dist < scale * 0.1){
+      particles.splice(i,1);
+      takeDamage(20);
+      continue;
+    }
+    p.x += (dx/dist)*speed;
+    p.y += (dy/dist)*speed;
+    drawParticle(p, timestamp);
+  }
+
+  for(var i = hitEffects.length-1; i >= 0; i--){
+    var h = hitEffects[i];
+    h.age += dt;
+    if(h.age > 0.5){ hitEffects.splice(i,1); continue; }
+    var op = 1 - h.age/0.5;
+    var r  = scale * 0.12 * (1 + h.age*4);
+    ctx.beginPath(); ctx.arc(h.x, h.y, r, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(136,221,255,'+op+')';
+    ctx.lineWidth = 3; ctx.stroke();
+    ctx.beginPath(); ctx.arc(h.x, h.y, r*0.4, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,'+(op*0.9)+')';
+    ctx.fill();
+  }
+
+  if(currentWave >= totalWaves && particles.length === 0) triggerWin();
+
+  requestAnimationFrame(gameLoop);
+}
+
+function drawCharacter(cx, cy, scale){
+  ctx.strokeStyle = 'rgba(170,221,255,0.9)';
+  ctx.lineWidth = 2.5;
+
+  // オーラ
+  ctx.beginPath(); ctx.arc(cx, cy, scale*0.22, 0, Math.PI*2);
+  ctx.strokeStyle = 'rgba(68,136,255,0.25)'; ctx.lineWidth=1; ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(170,221,255,0.9)'; ctx.lineWidth=2.5;
+
+  // 頭
+  ctx.beginPath(); ctx.arc(cx, cy-scale*0.13, scale*0.065, 0, Math.PI*2); ctx.stroke();
+  // 胴
+  ctx.beginPath(); ctx.moveTo(cx, cy-scale*0.06); ctx.lineTo(cx, cy+scale*0.11); ctx.stroke();
+  // 左腕
+  ctx.beginPath(); ctx.moveTo(cx, cy-scale*0.02); ctx.lineTo(cx-scale*0.1, cy+scale*0.07); ctx.stroke();
+  // 右腕
+  ctx.beginPath(); ctx.moveTo(cx, cy-scale*0.02); ctx.lineTo(cx+scale*0.1, cy+scale*0.07); ctx.stroke();
+  // 左脚
+  ctx.beginPath(); ctx.moveTo(cx, cy+scale*0.11); ctx.lineTo(cx-scale*0.06, cy+scale*0.24); ctx.stroke();
+  // 右脚
+  ctx.beginPath(); ctx.moveTo(cx, cy+scale*0.11); ctx.lineTo(cx+scale*0.06, cy+scale*0.24); ctx.stroke();
+}
+
+function spawnWave(cx, cy, scale){
+  currentWave++;
+  uiWaveCur.textContent = currentWave;
+  var d = scale * 0.85;
+  [[0,-1],[0,1],[-1,0],[1,0]].forEach(function(dir){
+    particles.push({ x:cx+dir[0]*d, y:cy+dir[1]*d, phase:Math.random()*Math.PI*2 });
   });
 }
-// AFrame読み込み後に登録
-if(typeof AFRAME!=='undefined'){registerGM();}
-else{document.addEventListener('aframe-loaded',registerGM);}
-</script>
 
+function drawParticle(p, t){
+  var pulse = 0.7 + 0.3*Math.sin(t*0.005+p.phase);
+  var r = 14*pulse;
+  var g = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*2.5);
+  g.addColorStop(0,'rgba(136,221,255,0.9)');
+  g.addColorStop(1,'rgba(68,136,255,0)');
+  ctx.beginPath(); ctx.arc(p.x,p.y,r*2.5,0,Math.PI*2);
+  ctx.fillStyle=g; ctx.fill();
+  ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2);
+  ctx.fillStyle='rgba(200,240,255,0.95)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(p.x,p.y,r*2,0,Math.PI*2);
+  ctx.strokeStyle='rgba(100,187,255,0.5)'; ctx.lineWidth=1.5; ctx.stroke();
+}
+
+canvas.addEventListener('touchend', function(e){
+  e.preventDefault();
+  var t = e.changedTouches[0];
+  onTapAt(t.clientX, t.clientY);
+},{passive:false});
+canvas.addEventListener('click', function(e){ onTapAt(e.clientX, e.clientY); });
+
+function onTapAt(tx, ty){
+  if(gameOver||gameWon||particles.length===0) return;
+  var nearest=null, minDist=Infinity;
+  particles.forEach(function(p){
+    var d=Math.sqrt((p.x-tx)*(p.x-tx)+(p.y-ty)*(p.y-ty));
+    if(d<minDist){minDist=d;nearest=p;}
+  });
+  if(!nearest || minDist>100) return;
+  hitEffects.push({x:nearest.x, y:nearest.y, age:0});
+  particles.splice(particles.indexOf(nearest),1);
+  if(currentWave>=totalWaves && particles.length===0) setTimeout(triggerWin,300);
+}
+
+function takeDamage(amount){
+  if(gameOver||gameWon) return;
+  hp=Math.max(0,hp-amount);
+  uiHpBar.style.width=hp+'%'; uiHpVal.textContent=hp;
+  uiHpBar.style.background=hp>60?'linear-gradient(90deg,#00ff99,#00cc66)':hp>30?'linear-gradient(90deg,#ffcc00,#ff8800)':'linear-gradient(90deg,#ff5555,#cc0000)';
+  uiFlash.style.opacity='1';
+  setTimeout(function(){uiFlash.style.opacity='0';},120);
+  if(hp<=0) triggerGameOver();
+}
+
+function triggerGameOver(){
+  if(gameOver) return; gameOver=true;
+  uiMsgTitle.textContent='GAME OVER'; uiMsgTitle.style.color='#ff5555';
+  uiMsgTitle.style.textShadow='0 0 20px #ff3333';
+  uiMsgSub.textContent='TAP to retry'; uiMsgWrap.style.display='flex';
+  setTimeout(function(){document.addEventListener('click',function(){location.reload();},{once:true});},800);
+}
+
+function triggerWin(){
+  if(gameWon) return; gameWon=true;
+  uiMsgTitle.textContent='Thank you'; uiMsgTitle.style.color='#aaddff';
+  uiMsgTitle.style.textShadow='0 0 24px #88ccff,0 0 48px #4488ff';
+  uiMsgSub.textContent='You protected all connections.';
+  uiMsgWrap.style.display='flex';
+}
+</script>
 </body>
 </html>
