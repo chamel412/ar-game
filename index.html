@@ -2,46 +2,42 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>AR Guard Game</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { background:#000; font-family:sans-serif; overflow:hidden; }
+body { background:#000; color:#fff; font-family:sans-serif; overflow:hidden; }
 
-#overlay {
-  position:fixed; inset:0; background:#111;
+#video {
+  position:fixed; top:0; left:0;
+  width:100vw; height:100vh;
+  object-fit:cover; display:none; z-index:1;
+}
+#canvas {
+  position:fixed; top:0; left:0;
+  width:100vw; height:100vh;
+  display:none; z-index:2;
+}
+
+#start-screen {
+  position:fixed; inset:0;
   display:flex; flex-direction:column;
   align-items:center; justify-content:center;
-  gap:24px; z-index:9999; color:#fff;
+  gap:20px; z-index:10;
   text-align:center; padding:32px;
 }
-#overlay h1 { font-size:22px; color:#aaddff; }
-#overlay p { font-size:15px; color:rgba(255,255,255,0.8); line-height:1.8; }
-#start-btn {
-  padding:20px 48px; font-size:20px;
+#start-screen h1 { font-size:22px; color:#aaddff; }
+#start-screen p { font-size:15px; color:rgba(255,255,255,0.8); line-height:1.8; }
+#btn {
+  padding:20px 40px; font-size:20px;
   background:#4488ff; color:#fff;
-  border:none; border-radius:12px;
-  touch-action:manipulation; cursor:pointer;
+  border:none; border-radius:8px;
+  cursor:pointer; touch-action:manipulation;
 }
-#status { font-size:13px; color:#aaa; }
-
-video {
-  position:fixed;
-  top:0; left:0;
-  width:100vw; height:100vh;
-  object-fit:cover;
-  z-index:1;
-}
-canvas {
-  position:fixed;
-  top:0; left:0;
-  width:100vw; height:100vh;
-  z-index:2;
-}
+#start-msg { font-size:13px; color:#aaa; }
 
 #ui {
   position:fixed; inset:0;
-  z-index:10; pointer-events:none;
+  z-index:3; pointer-events:none; display:none;
 }
 #hp-wrap {
   position:absolute; top:14px; left:50%;
@@ -54,13 +50,35 @@ canvas {
 #hp-bar { height:100%; width:100%; border-radius:9px; background:linear-gradient(90deg,#00ff99,#00cc66); transition:width 0.35s; }
 #hp-val { color:#fff; font-size:13px; min-width:30px; text-align:right; }
 #wave-wrap { position:absolute; top:44px; right:16px; color:rgba(170,221,255,0.85); font-size:13px; }
+
+/* キャラの台詞 */
+#dialogue {
+  position:absolute; bottom:100px; left:50%;
+  transform:translateX(-50%);
+  background:rgba(0,0,0,0.75);
+  border:1px solid rgba(170,221,255,0.5);
+  border-radius:12px;
+  padding:12px 20px;
+  color:#aaddff;
+  font-size:16px;
+  text-align:center;
+  white-space:nowrap;
+  opacity:0;
+  transition:opacity 0.4s;
+  text-shadow:0 0 8px #4488ff;
+  max-width:80vw;
+  white-space:normal;
+}
+
 #tap-hint {
   position:absolute; bottom:44px; left:50%;
   transform:translateX(-50%);
-  color:rgba(255,255,255,0.75); font-size:15px; white-space:nowrap;
+  color:rgba(255,255,255,0.75); font-size:15px;
+  white-space:nowrap;
   animation:pulse 2s ease-in-out infinite;
 }
 @keyframes pulse { 0%,100%{opacity:0.75;} 50%{opacity:0.3;} }
+
 #msg-wrap {
   position:absolute; top:50%; left:50%;
   transform:translate(-50%,-50%);
@@ -69,20 +87,26 @@ canvas {
 }
 #msg-title { font-size:clamp(40px,12vw,64px); font-weight:bold; }
 #msg-sub { font-size:clamp(14px,4vw,18px); color:rgba(255,255,255,0.8); }
-#damage-flash { position:fixed; inset:0; background:rgba(255,60,60,0.35); pointer-events:none; opacity:0; transition:opacity 0.1s; z-index:11; }
+
+#damage-flash {
+  position:fixed; inset:0;
+  background:rgba(255,60,60,0.35);
+  pointer-events:none; opacity:0;
+  transition:opacity 0.1s; z-index:4;
+}
 </style>
 </head>
 <body>
 
-<div id="overlay">
-  <h1>AR Guard Game</h1>
-  <p>カメラを使ったゲームです。<br>敵をタップして撃退してください。</p>
-  <button id="start-btn" onclick="startGame()">START GAME</button>
-  <p id="status">Ready</p>
-</div>
-
 <video id="video" autoplay playsinline muted></video>
 <canvas id="canvas"></canvas>
+
+<div id="start-screen">
+  <h1>AR Guard Game</h1>
+  <p>大切な誰かを守るゲームです。<br>四方から迫る敵をタップして撃退してください。</p>
+  <button id="btn" onclick="startGame()">START GAME</button>
+  <p id="start-msg">Ready</p>
+</div>
 
 <div id="damage-flash"></div>
 <div id="ui">
@@ -92,7 +116,8 @@ canvas {
     <div id="hp-val">100</div>
   </div>
   <div id="wave-wrap">Wave <span id="wave-cur">0</span> / <span id="wave-tot">5</span></div>
-  <div id="tap-hint">TAP to shoot</div>
+  <div id="dialogue"></div>
+  <div id="tap-hint">タップで撃退</div>
   <div id="msg-wrap">
     <div id="msg-title"></div>
     <div id="msg-sub"></div>
@@ -100,200 +125,224 @@ canvas {
 </div>
 
 <script>
-var video   = document.getElementById('video');
-var canvas  = document.getElementById('canvas');
-var ctx     = canvas.getContext('2d');
+var video  = document.getElementById('video');
+var canvas = document.getElementById('canvas');
+var ctx    = canvas.getContext('2d');
+
+// ゲーム設定
+var totalWaves   = 5;
+var waveInterval = 4500;
+// Waveごとの速度倍率（Wave1=1.0、Wave5=2.2）
+var waveSpeeds   = [1.0, 1.3, 1.6, 1.9, 2.2];
+// Waveクリア後の台詞
+var dialogues = [
+  '……ありがとう',
+  'ねえ、聞いてる？',
+  '一緒にいてくれる？',
+  'あなたがいないと、怖い',
+  'あなたが守ってくれたから、まだここにいます'
+];
 
 var hp=100, gameOver=false, gameWon=false;
-var totalWaves=5, currentWave=0, waveInterval=5000, nextWaveAt=null;
+var currentWave=0, nextWaveAt=null;
 var particles=[], hitEffects=[], lastTime=0;
+var dialogueTimer=null;
 
-var uiHpBar=document.getElementById('hp-bar');
-var uiHpVal=document.getElementById('hp-val');
-var uiWaveCur=document.getElementById('wave-cur');
-var uiWaveTot=document.getElementById('wave-tot');
-var uiMsgWrap=document.getElementById('msg-wrap');
-var uiMsgTitle=document.getElementById('msg-title');
-var uiMsgSub=document.getElementById('msg-sub');
-var uiFlash=document.getElementById('damage-flash');
-
-uiWaveTot.textContent = totalWaves;
+document.getElementById('wave-tot').textContent = totalWaves;
 
 function startGame(){
-  var status = document.getElementById('status');
-  status.textContent = 'Requesting camera...';
-
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+  document.getElementById('start-msg').textContent = 'Requesting...';
+  navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})
     .then(function(stream){
-      status.textContent = 'Camera OK!';
+      document.getElementById('start-msg').textContent = 'Camera OK!';
       video.srcObject = stream;
-      video.play();
-
+      video.style.display = 'block';
+      canvas.style.display = 'block';
       canvas.width  = window.innerWidth;
       canvas.height = window.innerHeight;
-
-      document.getElementById('overlay').style.display = 'none';
-
+      document.getElementById('start-screen').style.display = 'none';
+      document.getElementById('ui').style.display = 'block';
       nextWaveAt = performance.now() + 2000;
       requestAnimationFrame(gameLoop);
     })
     .catch(function(e){
-      status.textContent = 'Error: ' + e.message;
+      document.getElementById('start-msg').textContent = 'Error: '+e.message;
     });
 }
 
 window.addEventListener('resize', function(){
-  canvas.width  = window.innerWidth;
-  canvas.height = window.innerHeight;
+  canvas.width=window.innerWidth; canvas.height=window.innerHeight;
 });
 
 function gameLoop(timestamp){
-  var dt = Math.min((timestamp - (lastTime||timestamp)) / 1000, 0.1);
-  lastTime = timestamp;
+  var dt=Math.min((timestamp-(lastTime||timestamp))/1000,0.1);
+  lastTime=timestamp;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(gameOver||gameWon){requestAnimationFrame(gameLoop);return;}
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  var cx=canvas.width/2, cy=canvas.height/2;
+  var scale=Math.min(canvas.width,canvas.height)*0.3;
 
-  if(gameOver || gameWon){
-    requestAnimationFrame(gameLoop);
-    return;
+  drawCharacter(cx,cy,scale,timestamp);
+
+  // Wave生成
+  if(currentWave<totalWaves && nextWaveAt && timestamp>=nextWaveAt){
+    spawnWave(cx,cy,scale);
+    nextWaveAt = null; // 次のWaveはクリア後にセット
   }
 
-  var cx = canvas.width / 2;
-  var cy = canvas.height / 2;
-  var scale = Math.min(canvas.width, canvas.height) * 0.3;
+  // パーティクル移動・描画
+  var speedMult = waveSpeeds[Math.max(0, currentWave-1)];
+  var speed = scale * 0.35 * dt * speedMult;
+  var waveCleared = (particles.length > 0);
 
-  drawCharacter(cx, cy, scale);
-
-  if(currentWave < totalWaves && nextWaveAt && timestamp >= nextWaveAt){
-    spawnWave(cx, cy, scale);
-    nextWaveAt = timestamp + waveInterval;
-  }
-
-  var speed = scale * 0.35 * dt;
-  for(var i = particles.length-1; i >= 0; i--){
-    var p = particles[i];
-    var dx = cx - p.x, dy = cy - p.y;
-    var dist = Math.sqrt(dx*dx + dy*dy);
-    if(dist < scale * 0.1){
+  for(var i=particles.length-1;i>=0;i--){
+    var p=particles[i];
+    var dx=cx-p.x, dy=cy-p.y;
+    var dist=Math.sqrt(dx*dx+dy*dy);
+    if(dist<scale*0.1){
       particles.splice(i,1);
       takeDamage(20);
       continue;
     }
-    p.x += (dx/dist)*speed;
-    p.y += (dy/dist)*speed;
-    drawParticle(p, timestamp);
+    p.x+=(dx/dist)*speed;
+    p.y+=(dy/dist)*speed;
+    drawParticle(p,timestamp);
   }
 
-  for(var i = hitEffects.length-1; i >= 0; i--){
-    var h = hitEffects[i];
-    h.age += dt;
-    if(h.age > 0.5){ hitEffects.splice(i,1); continue; }
-    var op = 1 - h.age/0.5;
-    var r  = scale * 0.12 * (1 + h.age*4);
-    ctx.beginPath(); ctx.arc(h.x, h.y, r, 0, Math.PI*2);
-    ctx.strokeStyle = 'rgba(136,221,255,'+op+')';
-    ctx.lineWidth = 3; ctx.stroke();
-    ctx.beginPath(); ctx.arc(h.x, h.y, r*0.4, 0, Math.PI*2);
-    ctx.fillStyle = 'rgba(255,255,255,'+(op*0.9)+')';
-    ctx.fill();
+  // ヒットエフェクト
+  for(var i=hitEffects.length-1;i>=0;i--){
+    var h=hitEffects[i]; h.age+=dt;
+    if(h.age>0.5){hitEffects.splice(i,1);continue;}
+    var op=1-h.age/0.5;
+    var r=scale*0.12*(1+h.age*4);
+    ctx.beginPath();ctx.arc(h.x,h.y,r,0,Math.PI*2);
+    ctx.strokeStyle='rgba(136,221,255,'+op+')';ctx.lineWidth=3;ctx.stroke();
+    ctx.beginPath();ctx.arc(h.x,h.y,r*0.4,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,255,255,'+(op*0.9)+')';ctx.fill();
   }
 
-  if(currentWave >= totalWaves && particles.length === 0) triggerWin();
+  // Waveクリア判定
+  if(currentWave>0 && particles.length===0 && nextWaveAt===null && !gameWon){
+    onWaveCleared();
+  }
 
   requestAnimationFrame(gameLoop);
 }
 
-function drawCharacter(cx, cy, scale){
-  ctx.strokeStyle = 'rgba(170,221,255,0.9)';
-  ctx.lineWidth = 2.5;
-
-  // オーラ
-  ctx.beginPath(); ctx.arc(cx, cy, scale*0.22, 0, Math.PI*2);
-  ctx.strokeStyle = 'rgba(68,136,255,0.25)'; ctx.lineWidth=1; ctx.stroke();
-
-  ctx.strokeStyle = 'rgba(170,221,255,0.9)'; ctx.lineWidth=2.5;
-
-  // 頭
-  ctx.beginPath(); ctx.arc(cx, cy-scale*0.13, scale*0.065, 0, Math.PI*2); ctx.stroke();
-  // 胴
-  ctx.beginPath(); ctx.moveTo(cx, cy-scale*0.06); ctx.lineTo(cx, cy+scale*0.11); ctx.stroke();
-  // 左腕
-  ctx.beginPath(); ctx.moveTo(cx, cy-scale*0.02); ctx.lineTo(cx-scale*0.1, cy+scale*0.07); ctx.stroke();
-  // 右腕
-  ctx.beginPath(); ctx.moveTo(cx, cy-scale*0.02); ctx.lineTo(cx+scale*0.1, cy+scale*0.07); ctx.stroke();
-  // 左脚
-  ctx.beginPath(); ctx.moveTo(cx, cy+scale*0.11); ctx.lineTo(cx-scale*0.06, cy+scale*0.24); ctx.stroke();
-  // 右脚
-  ctx.beginPath(); ctx.moveTo(cx, cy+scale*0.11); ctx.lineTo(cx+scale*0.06, cy+scale*0.24); ctx.stroke();
+function onWaveCleared(){
+  if(currentWave >= totalWaves){
+    setTimeout(triggerWin, 800);
+    return;
+  }
+  // 台詞表示
+  showDialogue(dialogues[currentWave-1]);
+  // 次のWaveをセット
+  nextWaveAt = performance.now() + waveInterval;
 }
 
-function spawnWave(cx, cy, scale){
+function showDialogue(text){
+  var el = document.getElementById('dialogue');
+  el.textContent = text;
+  el.style.opacity = '1';
+  clearTimeout(dialogueTimer);
+  dialogueTimer = setTimeout(function(){
+    el.style.opacity = '0';
+  }, 3000);
+}
+
+function drawCharacter(cx,cy,scale,timestamp){
+  // 呼吸アニメーション
+  var breathe = 1 + 0.02*Math.sin(timestamp*0.002);
+
+  // オーラ（HPに応じて色変化）
+  var auraColor = hp>60 ? '68,136,255' : hp>30 ? '255,180,0' : '255,80,80';
+  ctx.beginPath();ctx.arc(cx,cy,scale*0.22*breathe,0,Math.PI*2);
+  ctx.strokeStyle='rgba('+auraColor+',0.3)';ctx.lineWidth=1;ctx.stroke();
+
+  ctx.strokeStyle='rgba(170,221,255,0.9)';ctx.lineWidth=2.5;
+
+  // 頭
+  ctx.beginPath();ctx.arc(cx,cy-scale*0.13,scale*0.065,0,Math.PI*2);ctx.stroke();
+  // 胴
+  ctx.beginPath();ctx.moveTo(cx,cy-scale*0.06);ctx.lineTo(cx,cy+scale*0.11);ctx.stroke();
+  // 左腕
+  ctx.beginPath();ctx.moveTo(cx,cy-scale*0.02);ctx.lineTo(cx-scale*0.1,cy+scale*0.07);ctx.stroke();
+  // 右腕
+  ctx.beginPath();ctx.moveTo(cx,cy-scale*0.02);ctx.lineTo(cx+scale*0.1,cy+scale*0.07);ctx.stroke();
+  // 左脚
+  ctx.beginPath();ctx.moveTo(cx,cy+scale*0.11);ctx.lineTo(cx-scale*0.06,cy+scale*0.24);ctx.stroke();
+  // 右脚
+  ctx.beginPath();ctx.moveTo(cx,cy+scale*0.11);ctx.lineTo(cx+scale*0.06,cy+scale*0.24);ctx.stroke();
+}
+
+function spawnWave(cx,cy,scale){
   currentWave++;
-  uiWaveCur.textContent = currentWave;
-  var d = scale * 0.85;
+  document.getElementById('wave-cur').textContent=currentWave;
+  var d=scale*0.85;
   [[0,-1],[0,1],[-1,0],[1,0]].forEach(function(dir){
-    particles.push({ x:cx+dir[0]*d, y:cy+dir[1]*d, phase:Math.random()*Math.PI*2 });
+    particles.push({x:cx+dir[0]*d, y:cy+dir[1]*d, phase:Math.random()*Math.PI*2});
   });
 }
 
-function drawParticle(p, t){
-  var pulse = 0.7 + 0.3*Math.sin(t*0.005+p.phase);
-  var r = 14*pulse;
-  var g = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*2.5);
+function drawParticle(p,t){
+  var pulse=0.7+0.3*Math.sin(t*0.005+p.phase), r=14*pulse;
+  var g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*2.5);
   g.addColorStop(0,'rgba(136,221,255,0.9)');
   g.addColorStop(1,'rgba(68,136,255,0)');
-  ctx.beginPath(); ctx.arc(p.x,p.y,r*2.5,0,Math.PI*2);
-  ctx.fillStyle=g; ctx.fill();
-  ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2);
-  ctx.fillStyle='rgba(200,240,255,0.95)'; ctx.fill();
-  ctx.beginPath(); ctx.arc(p.x,p.y,r*2,0,Math.PI*2);
-  ctx.strokeStyle='rgba(100,187,255,0.5)'; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.beginPath();ctx.arc(p.x,p.y,r*2.5,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();
+  ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle='rgba(200,240,255,0.95)';ctx.fill();
+  ctx.beginPath();ctx.arc(p.x,p.y,r*2,0,Math.PI*2);ctx.strokeStyle='rgba(100,187,255,0.5)';ctx.lineWidth=1.5;ctx.stroke();
 }
 
-canvas.addEventListener('touchend', function(e){
+canvas.addEventListener('touchend',function(e){
   e.preventDefault();
-  var t = e.changedTouches[0];
-  onTapAt(t.clientX, t.clientY);
+  var t=e.changedTouches[0];onTapAt(t.clientX,t.clientY);
 },{passive:false});
-canvas.addEventListener('click', function(e){ onTapAt(e.clientX, e.clientY); });
+canvas.addEventListener('click',function(e){onTapAt(e.clientX,e.clientY);});
 
-function onTapAt(tx, ty){
-  if(gameOver||gameWon||particles.length===0) return;
-  var nearest=null, minDist=Infinity;
+function onTapAt(tx,ty){
+  if(gameOver||gameWon||particles.length===0)return;
+  var nearest=null,minDist=Infinity;
   particles.forEach(function(p){
     var d=Math.sqrt((p.x-tx)*(p.x-tx)+(p.y-ty)*(p.y-ty));
     if(d<minDist){minDist=d;nearest=p;}
   });
-  if(!nearest || minDist>100) return;
-  hitEffects.push({x:nearest.x, y:nearest.y, age:0});
+  if(!nearest||minDist>100)return;
+  hitEffects.push({x:nearest.x,y:nearest.y,age:0});
   particles.splice(particles.indexOf(nearest),1);
-  if(currentWave>=totalWaves && particles.length===0) setTimeout(triggerWin,300);
 }
 
 function takeDamage(amount){
-  if(gameOver||gameWon) return;
+  if(gameOver||gameWon)return;
   hp=Math.max(0,hp-amount);
-  uiHpBar.style.width=hp+'%'; uiHpVal.textContent=hp;
-  uiHpBar.style.background=hp>60?'linear-gradient(90deg,#00ff99,#00cc66)':hp>30?'linear-gradient(90deg,#ffcc00,#ff8800)':'linear-gradient(90deg,#ff5555,#cc0000)';
-  uiFlash.style.opacity='1';
-  setTimeout(function(){uiFlash.style.opacity='0';},120);
-  if(hp<=0) triggerGameOver();
+  document.getElementById('hp-bar').style.width=hp+'%';
+  document.getElementById('hp-val').textContent=hp;
+  document.getElementById('hp-bar').style.background=hp>60?'linear-gradient(90deg,#00ff99,#00cc66)':hp>30?'linear-gradient(90deg,#ffcc00,#ff8800)':'linear-gradient(90deg,#ff5555,#cc0000)';
+  document.getElementById('damage-flash').style.opacity='1';
+  setTimeout(function(){document.getElementById('damage-flash').style.opacity='0';},120);
+  if(hp<=0)triggerGameOver();
 }
 
 function triggerGameOver(){
-  if(gameOver) return; gameOver=true;
-  uiMsgTitle.textContent='GAME OVER'; uiMsgTitle.style.color='#ff5555';
-  uiMsgTitle.style.textShadow='0 0 20px #ff3333';
-  uiMsgSub.textContent='TAP to retry'; uiMsgWrap.style.display='flex';
+  if(gameOver)return;gameOver=true;
+  document.getElementById('dialogue').style.opacity='0';
+  document.getElementById('msg-title').textContent='GAME OVER';
+  document.getElementById('msg-title').style.color='#ff5555';
+  document.getElementById('msg-title').style.textShadow='0 0 20px #ff3333';
+  document.getElementById('msg-sub').textContent='タップでリトライ';
+  document.getElementById('msg-wrap').style.display='flex';
   setTimeout(function(){document.addEventListener('click',function(){location.reload();},{once:true});},800);
 }
 
 function triggerWin(){
-  if(gameWon) return; gameWon=true;
-  uiMsgTitle.textContent='Thank you'; uiMsgTitle.style.color='#aaddff';
-  uiMsgTitle.style.textShadow='0 0 24px #88ccff,0 0 48px #4488ff';
-  uiMsgSub.textContent='You protected all connections.';
-  uiMsgWrap.style.display='flex';
+  if(gameWon)return;gameWon=true;
+  document.getElementById('dialogue').style.opacity='0';
+  document.getElementById('msg-title').textContent='ありがとう';
+  document.getElementById('msg-title').style.color='#aaddff';
+  document.getElementById('msg-title').style.textShadow='0 0 24px #88ccff,0 0 48px #4488ff';
+  document.getElementById('msg-sub').textContent='あなたが守ってくれたから、まだここにいます';
+  document.getElementById('msg-wrap').style.display='flex';
 }
 </script>
 </body>
