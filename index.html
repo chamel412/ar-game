@@ -63,8 +63,11 @@ var canvas = document.getElementById('canvas');
 var ctx    = canvas.getContext('2d');
 
 var totalWaves   = 5;
-var waveInterval = 4000;
-var waveSpeeds   = [0.18, 0.24, 0.30, 0.36, 0.44]; // scaleに対する速度係数
+var waveInterval = 3500; // Wave間隔を短く
+// 難易度：速めに設定（高校生向け）
+var waveSpeeds   = [0.25, 0.32, 0.40, 0.50, 0.62];
+// Wave毎の敵の数（4→4→6→6→8）
+var waveCounts   = [4, 4, 6, 6, 8];
 var dialogues    = [
   '……ありがとう',
   'ねえ、聞いてる？',
@@ -77,7 +80,6 @@ var hp=100, gameOver=false, gameWon=false;
 var currentWave=0, waveActive=false, waitingNext=false, nextWaveAt=null;
 var particles=[], hitEffects=[], lastTime=0;
 var dialogueTimer=null;
-var gameStarted=false;
 
 document.getElementById('wave-tot').textContent = totalWaves;
 
@@ -92,7 +94,6 @@ function startGame(){
       canvas.height = window.innerHeight;
       document.getElementById('start-screen').style.display = 'none';
       document.getElementById('ui').style.display = 'block';
-      gameStarted = true;
       nextWaveAt = performance.now() + 2000;
       requestAnimationFrame(gameLoop);
     })
@@ -106,148 +107,268 @@ window.addEventListener('resize', function(){
 });
 
 function gameLoop(timestamp){
-  var dt = Math.min((timestamp-(lastTime||timestamp))/1000, 0.1);
-  lastTime = timestamp;
+  var dt=Math.min((timestamp-(lastTime||timestamp))/1000,0.1);
+  lastTime=timestamp;
   ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(gameOver||gameWon){requestAnimationFrame(gameLoop);return;}
 
-  if(gameOver||gameWon){ requestAnimationFrame(gameLoop); return; }
+  var cx=canvas.width/2, cy=canvas.height/2;
+  var scale=Math.min(canvas.width,canvas.height)*0.32;
 
-  var cx    = canvas.width/2;
-  var cy    = canvas.height/2;
-  var scale = Math.min(canvas.width,canvas.height)*0.3;
-
-  // キャラ描画
   drawCharacter(cx,cy,scale,timestamp);
 
-  // Wave開始判定
-  if(!waveActive && nextWaveAt && timestamp >= nextWaveAt && currentWave < totalWaves){
+  if(!waveActive && nextWaveAt && timestamp>=nextWaveAt && currentWave<totalWaves){
     spawnWave(cx,cy,scale);
-    nextWaveAt  = null;
-    waveActive  = true;
-    waitingNext = false;
+    nextWaveAt=null; waveActive=true; waitingNext=false;
   }
 
-  // パーティクル
-  var spd = scale * waveSpeeds[Math.max(0,currentWave-1)] * dt;
-  for(var i=particles.length-1; i>=0; i--){
-    var p = particles[i];
+  var spd=scale*waveSpeeds[Math.max(0,currentWave-1)]*dt;
+  for(var i=particles.length-1;i>=0;i--){
+    var p=particles[i];
     var dx=cx-p.x, dy=cy-p.y;
     var dist=Math.sqrt(dx*dx+dy*dy);
-    if(dist < scale*0.1){
-      particles.splice(i,1);
-      takeDamage(20);
-      continue;
+    if(dist<scale*0.1){
+      particles.splice(i,1); takeDamage(20); continue;
     }
-    p.x += (dx/dist)*spd;
-    p.y += (dy/dist)*spd;
-    drawParticle(p,timestamp);
+    p.x+=(dx/dist)*spd; p.y+=(dy/dist)*spd;
+    p.angle = (p.angle||0) + dt*3;
+    drawEnemy(p,timestamp);
   }
 
-  // ヒットエフェクト
-  for(var i=hitEffects.length-1; i>=0; i--){
+  for(var i=hitEffects.length-1;i>=0;i--){
     var h=hitEffects[i]; h.age+=dt;
     if(h.age>0.5){hitEffects.splice(i,1);continue;}
     var op=1-h.age/0.5;
     var r=scale*0.12*(1+h.age*4);
+    // 爆発エフェクト（赤系）
     ctx.beginPath();ctx.arc(h.x,h.y,r,0,Math.PI*2);
-    ctx.strokeStyle='rgba(136,221,255,'+op+')';ctx.lineWidth=3;ctx.stroke();
+    ctx.strokeStyle='rgba(255,80,80,'+op+')';ctx.lineWidth=3;ctx.stroke();
     ctx.beginPath();ctx.arc(h.x,h.y,r*0.4,0,Math.PI*2);
-    ctx.fillStyle='rgba(255,255,255,'+(op*0.9)+')';ctx.fill();
+    ctx.fillStyle='rgba(255,200,100,'+(op*0.9)+')';ctx.fill();
+    // クラック線
+    for(var c=0;c<4;c++){
+      var ang=h.angle+(c*Math.PI/2);
+      var cr=r*1.5*(1+h.age*2);
+      ctx.beginPath();
+      ctx.moveTo(h.x+Math.cos(ang)*r*0.5, h.y+Math.sin(ang)*r*0.5);
+      ctx.lineTo(h.x+Math.cos(ang)*cr, h.y+Math.sin(ang)*cr);
+      ctx.strokeStyle='rgba(255,120,50,'+(op*0.8)+')';
+      ctx.lineWidth=2; ctx.stroke();
+    }
   }
 
-  // Waveクリア判定：waveActiveかつparticles空
   if(waveActive && particles.length===0 && !waitingNext){
-    waitingNext = true;
-    waveActive  = false;
-    onWaveCleared();
+    waitingNext=true; waveActive=false; onWaveCleared();
   }
 
   requestAnimationFrame(gameLoop);
 }
 
-function onWaveCleared(){
-  // 台詞表示
-  showDialogue(dialogues[currentWave-1]);
-
-  if(currentWave >= totalWaves){
-    setTimeout(triggerWin, 2500);
-  } else {
-    nextWaveAt = performance.now() + waveInterval;
-  }
-}
-
-function showDialogue(text){
-  var el = document.getElementById('dialogue');
-  el.textContent = text;
-  el.style.opacity = '1';
-  clearTimeout(dialogueTimer);
-  dialogueTimer = setTimeout(function(){ el.style.opacity='0'; }, 3000);
-}
-
 function drawCharacter(cx,cy,scale,t){
-  var breathe = 1 + 0.02*Math.sin(t*0.002);
-  var auraColor = hp>60 ? '68,136,255' : hp>30 ? '255,180,0' : '255,80,80';
-  ctx.beginPath();ctx.arc(cx,cy,scale*0.22*breathe,0,Math.PI*2);
-  ctx.strokeStyle='rgba('+auraColor+',0.3)';ctx.lineWidth=2;ctx.stroke();
-  ctx.strokeStyle='rgba(170,221,255,0.9)';ctx.lineWidth=2.5;
-  ctx.beginPath();ctx.arc(cx,cy-scale*0.13,scale*0.065,0,Math.PI*2);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(cx,cy-scale*0.06);ctx.lineTo(cx,cy+scale*0.11);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(cx,cy-scale*0.02);ctx.lineTo(cx-scale*0.1,cy+scale*0.07);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(cx,cy-scale*0.02);ctx.lineTo(cx+scale*0.1,cy+scale*0.07);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(cx,cy+scale*0.11);ctx.lineTo(cx-scale*0.06,cy+scale*0.24);ctx.stroke();
-  ctx.beginPath();ctx.moveTo(cx,cy+scale*0.11);ctx.lineTo(cx+scale*0.06,cy+scale*0.24);ctx.stroke();
+  // キャラクターを大きく・鮮やかに
+  var s = scale * 0.55; // スケールアップ
+  var breathe = 1 + 0.025*Math.sin(t*0.002);
+
+  // 外側オーラ（HP連動）
+  var auraColor = hp>60 ? '80,160,255' : hp>30 ? '255,200,0' : '255,60,60';
+  var auraR = s*0.55*breathe;
+  var auraGrad = ctx.createRadialGradient(cx,cy,auraR*0.3,cx,cy,auraR);
+  auraGrad.addColorStop(0,'rgba('+auraColor+',0.15)');
+  auraGrad.addColorStop(1,'rgba('+auraColor+',0)');
+  ctx.beginPath();ctx.arc(cx,cy,auraR,0,Math.PI*2);
+  ctx.fillStyle=auraGrad; ctx.fill();
+
+  // オーラリング
+  ctx.beginPath();ctx.arc(cx,cy,auraR,0,Math.PI*2);
+  ctx.strokeStyle='rgba('+auraColor+',0.6)';ctx.lineWidth=2.5;ctx.stroke();
+
+  // 内側グロー
+  ctx.beginPath();ctx.arc(cx,cy,s*0.3,0,Math.PI*2);
+  ctx.strokeStyle='rgba('+auraColor+',0.3)';ctx.lineWidth=1;ctx.stroke();
+
+  // 人型描画（大きく・鮮やかなシアン）
+  var lw = 3.5;
+  ctx.strokeStyle='rgba(100,220,255,1.0)';
+  ctx.shadowColor='rgba(80,200,255,0.8)';
+  ctx.shadowBlur=12;
+  ctx.lineWidth=lw;
+  ctx.lineCap='round';
+
+  // 頭
+  ctx.beginPath();ctx.arc(cx, cy-s*0.28, s*0.12, 0, Math.PI*2);ctx.stroke();
+
+  // 首
+  ctx.beginPath();ctx.moveTo(cx,cy-s*0.16);ctx.lineTo(cx,cy-s*0.12);ctx.stroke();
+
+  // 肩ライン
+  ctx.beginPath();ctx.moveTo(cx-s*0.22,cy-s*0.05);ctx.lineTo(cx+s*0.22,cy-s*0.05);ctx.stroke();
+
+  // 胴体
+  ctx.beginPath();ctx.moveTo(cx,cy-s*0.12);ctx.lineTo(cx,cy+s*0.18);ctx.stroke();
+
+  // 左腕（上腕・前腕）
+  ctx.beginPath();ctx.moveTo(cx-s*0.22,cy-s*0.05);ctx.lineTo(cx-s*0.32,cy+s*0.08);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(cx-s*0.32,cy+s*0.08);ctx.lineTo(cx-s*0.28,cy+s*0.22);ctx.stroke();
+
+  // 右腕
+  ctx.beginPath();ctx.moveTo(cx+s*0.22,cy-s*0.05);ctx.lineTo(cx+s*0.32,cy+s*0.08);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(cx+s*0.32,cy+s*0.08);ctx.lineTo(cx+s*0.28,cy+s*0.22);ctx.stroke();
+
+  // 腰ライン
+  ctx.beginPath();ctx.moveTo(cx-s*0.15,cy+s*0.18);ctx.lineTo(cx+s*0.15,cy+s*0.18);ctx.stroke();
+
+  // 左脚（大腿・下腿）
+  ctx.beginPath();ctx.moveTo(cx-s*0.10,cy+s*0.18);ctx.lineTo(cx-s*0.14,cy+s*0.36);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(cx-s*0.14,cy+s*0.36);ctx.lineTo(cx-s*0.12,cy+s*0.52);ctx.stroke();
+
+  // 右脚
+  ctx.beginPath();ctx.moveTo(cx+s*0.10,cy+s*0.18);ctx.lineTo(cx+s*0.14,cy+s*0.36);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(cx+s*0.14,cy+s*0.36);ctx.lineTo(cx+s*0.12,cy+s*0.52);ctx.stroke();
+
+  // 関節ドット
+  ctx.shadowBlur=6;
+  var joints=[
+    [cx-s*0.22,cy-s*0.05],[cx+s*0.22,cy-s*0.05],
+    [cx-s*0.32,cy+s*0.08],[cx+s*0.32,cy+s*0.08],
+    [cx-s*0.14,cy+s*0.36],[cx+s*0.14,cy+s*0.36]
+  ];
+  joints.forEach(function(j){
+    ctx.beginPath();ctx.arc(j[0],j[1],s*0.03,0,Math.PI*2);
+    ctx.fillStyle='rgba(150,230,255,0.9)';ctx.fill();
+  });
+
+  ctx.shadowBlur=0;
+  ctx.shadowColor='transparent';
+}
+
+function drawEnemy(p,t){
+  var pulse=0.7+0.3*Math.sin(t*0.006+p.phase);
+  var r=16*pulse;
+  var ang=p.angle||0;
+
+  // 外側グロー（赤）
+  var g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*3);
+  g.addColorStop(0,'rgba(255,60,60,0.6)');
+  g.addColorStop(0.4,'rgba(200,30,30,0.3)');
+  g.addColorStop(1,'rgba(100,0,0,0)');
+  ctx.beginPath();ctx.arc(p.x,p.y,r*3,0,Math.PI*2);
+  ctx.fillStyle=g;ctx.fill();
+
+  // コアオーブ
+  var core=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r);
+  core.addColorStop(0,'rgba(255,200,180,1)');
+  core.addColorStop(0.4,'rgba(255,80,60,1)');
+  core.addColorStop(1,'rgba(150,0,0,0.8)');
+  ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);
+  ctx.fillStyle=core;ctx.fill();
+
+  // クラック（回転するひび割れ）
+  ctx.strokeStyle='rgba(255,50,30,0.8)';
+  ctx.lineWidth=1.5;
+  for(var c=0;c<3;c++){
+    var a=ang+c*(Math.PI*2/3);
+    ctx.beginPath();
+    ctx.moveTo(p.x,p.y);
+    ctx.lineTo(
+      p.x+Math.cos(a)*r*1.8,
+      p.y+Math.sin(a)*r*1.8
+    );
+    ctx.stroke();
+    // ひびの枝
+    ctx.beginPath();
+    ctx.moveTo(
+      p.x+Math.cos(a)*r*0.8,
+      p.y+Math.sin(a)*r*0.8
+    );
+    ctx.lineTo(
+      p.x+Math.cos(a+0.5)*r*1.4,
+      p.y+Math.sin(a+0.5)*r*1.4
+    );
+    ctx.stroke();
+  }
+
+  // 外リング
+  ctx.beginPath();ctx.arc(p.x,p.y,r*1.5,0,Math.PI*2);
+  ctx.strokeStyle='rgba(255,100,50,0.4)';
+  ctx.lineWidth=1;ctx.stroke();
 }
 
 function spawnWave(cx,cy,scale){
   currentWave++;
-  document.getElementById('wave-cur').textContent = currentWave;
-  var d = scale*0.85;
-  [[0,-1],[0,1],[-1,0],[1,0]].forEach(function(dir){
-    particles.push({x:cx+dir[0]*d, y:cy+dir[1]*d, phase:Math.random()*Math.PI*2});
-  });
-}
+  document.getElementById('wave-cur').textContent=currentWave;
+  var count=waveCounts[currentWave-1];
+  var d=scale*0.88;
 
-function drawParticle(p,t){
-  var pulse=0.7+0.3*Math.sin(t*0.005+p.phase), r=14*pulse;
-  var g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*2.5);
-  g.addColorStop(0,'rgba(136,221,255,0.9)');
-  g.addColorStop(1,'rgba(68,136,255,0)');
-  ctx.beginPath();ctx.arc(p.x,p.y,r*2.5,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();
-  ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fillStyle='rgba(200,240,255,0.95)';ctx.fill();
-  ctx.beginPath();ctx.arc(p.x,p.y,r*2,0,Math.PI*2);ctx.strokeStyle='rgba(100,187,255,0.5)';ctx.lineWidth=1.5;ctx.stroke();
+  // 基本4方向
+  var dirs=[[0,-1],[0,1],[-1,0],[1,0]];
+
+  // Wave3以降は斜め方向も追加
+  if(count>4){
+    dirs=dirs.concat([[0.7,-0.7],[0.7,0.7],[-0.7,-0.7],[-0.7,0.7]]);
+  }
+
+  for(var i=0;i<count;i++){
+    var dir=dirs[i%dirs.length];
+    // 少しランダムにずらす
+    var jitter = (Math.random()-0.5)*0.3;
+    var dx=dir[0]+jitter, dy=dir[1]+jitter;
+    var len=Math.sqrt(dx*dx+dy*dy);
+    particles.push({
+      x:cx+(dx/len)*d,
+      y:cy+(dy/len)*d,
+      phase:Math.random()*Math.PI*2,
+      angle:Math.random()*Math.PI*2
+    });
+  }
 }
 
 canvas.addEventListener('touchend',function(e){
   e.preventDefault();
-  var t=e.changedTouches[0]; onTapAt(t.clientX,t.clientY);
+  var t=e.changedTouches[0];onTapAt(t.clientX,t.clientY);
 },{passive:false});
-canvas.addEventListener('click',function(e){ onTapAt(e.clientX,e.clientY); });
+canvas.addEventListener('click',function(e){onTapAt(e.clientX,e.clientY);});
 
 function onTapAt(tx,ty){
-  if(gameOver||gameWon||particles.length===0) return;
-  var nearest=null, minDist=Infinity;
+  if(gameOver||gameWon||particles.length===0)return;
+  var nearest=null,minDist=Infinity;
   particles.forEach(function(p){
     var d=Math.sqrt((p.x-tx)*(p.x-tx)+(p.y-ty)*(p.y-ty));
     if(d<minDist){minDist=d;nearest=p;}
   });
-  if(!nearest||minDist>120) return;
-  hitEffects.push({x:nearest.x,y:nearest.y,age:0});
+  if(!nearest||minDist>120)return;
+  hitEffects.push({x:nearest.x,y:nearest.y,age:0,angle:nearest.angle||0});
   particles.splice(particles.indexOf(nearest),1);
 }
 
+function onWaveCleared(){
+  showDialogue(dialogues[currentWave-1]);
+  if(currentWave>=totalWaves){
+    setTimeout(triggerWin,2500);
+  } else {
+    nextWaveAt=performance.now()+waveInterval;
+  }
+}
+
+function showDialogue(text){
+  var el=document.getElementById('dialogue');
+  el.textContent=text; el.style.opacity='1';
+  clearTimeout(dialogueTimer);
+  dialogueTimer=setTimeout(function(){el.style.opacity='0';},3000);
+}
+
 function takeDamage(amount){
-  if(gameOver||gameWon) return;
+  if(gameOver||gameWon)return;
   hp=Math.max(0,hp-amount);
   document.getElementById('hp-bar').style.width=hp+'%';
   document.getElementById('hp-val').textContent=hp;
   document.getElementById('hp-bar').style.background=hp>60?'linear-gradient(90deg,#00ff99,#00cc66)':hp>30?'linear-gradient(90deg,#ffcc00,#ff8800)':'linear-gradient(90deg,#ff5555,#cc0000)';
   document.getElementById('damage-flash').style.opacity='1';
   setTimeout(function(){document.getElementById('damage-flash').style.opacity='0';},120);
-  if(hp<=0) triggerGameOver();
+  if(hp<=0)triggerGameOver();
 }
 
 function triggerGameOver(){
-  if(gameOver) return; gameOver=true;
+  if(gameOver)return;gameOver=true;
   document.getElementById('dialogue').style.opacity='0';
   document.getElementById('msg-title').textContent='GAME OVER';
   document.getElementById('msg-title').style.color='#ff5555';
@@ -258,7 +379,7 @@ function triggerGameOver(){
 }
 
 function triggerWin(){
-  if(gameWon) return; gameWon=true;
+  if(gameWon)return;gameWon=true;
   document.getElementById('dialogue').style.opacity='0';
   document.getElementById('msg-title').textContent='ありがとう';
   document.getElementById('msg-title').style.color='#aaddff';
